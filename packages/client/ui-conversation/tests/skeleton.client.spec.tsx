@@ -360,12 +360,14 @@ function mount(
       ...allowAllAccess,
       useProjection: (() => undefined),
       useComposerBlock: select => select(options.composerBlock),
+      useNoFolderSessions: select => select([]),
       useInput,
       inputActions,
       renderSlot,
       renderSlotChain,
       renderFactorySlot,
       selectWorkspace: retargetWorkspace,
+      selectNoFolder: vi.fn(async () => {}),
       t,
     }
     const useFactorySlot = ((name: string, fallback: (props: never) => ReactNode) => (

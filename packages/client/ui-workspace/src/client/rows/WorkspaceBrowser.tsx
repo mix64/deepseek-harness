@@ -251,7 +251,7 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
 
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
-  'useSessionStatus' | 'startSession' | 'open'
+  'useSessionStatus' | 'startSession' | 'startNoFolderSession' | 'open'
   | 'insertWorkspaceBefore' | 't' | 'usePanelInfo'
   | 'useRemoteAccess' | 'useSessionAccess' | 'useWorkspaceAccess'
 > & PropsRenderSlots<
@@ -316,7 +316,7 @@ function EmptySessions({ rowState, onLeaveArchivedOnly, t }: Pick<SessionTreePro
 
 /** The scrolling session tree; unmounting drops the sessions subscription and the session watermarks. */
 function SessionTree({
-  list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds,
+  list, useSessionStatus, startSession, startNoFolderSession, open, workspaces, ungroupedSessionIds,
   rowState, onLeaveArchivedOnly,
   workspaceReady, animationResetKey, usePanelInfo, useRemoteAccess, useSessionAccess, useWorkspaceAccess,
   onRenameRequest, onDeleteRequest, onSessionRenameRequest,
@@ -568,10 +568,9 @@ function SessionTree({
             setGroupExpanded(group.key, !group.expanded)
           }}
           onCreate={() => {
-            if (group.workspaceId !== undefined) {
-              setGroupExpanded(group.key, true)
-              startSession(group.workspaceId)
-            }
+            setGroupExpanded(group.key, true)
+            if (group.workspaceId === undefined) startNoFolderSession()
+            else startSession(group.workspaceId)
           }}
           drag={workspaceDragProps}
           actions={group.workspaceId === undefined
@@ -919,6 +918,7 @@ export function WorkspaceBrowser({
   useStore,
   actions,
   startSession,
+  startNoFolderSession,
   open,
   requestSessionRename,
   notifyArchivedNotOpenable,
@@ -1478,6 +1478,7 @@ export function WorkspaceBrowser({
                 rowState={rowState}
                 onLeaveArchivedOnly={leaveArchivedOnly}
                 startSession={startSession}
+                startNoFolderSession={startNoFolderSession}
                 open={guardedOpen}
                 insertWorkspaceBefore={insertWorkspaceBefore}
                 revealSessionId={revealSessionId}

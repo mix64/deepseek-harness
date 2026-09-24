@@ -94,6 +94,7 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
         expect(await page.getByRole('dialog').count()).toBe(0)
         expect(await input.count()).toBe(0)
         await page.getByRole('button', { name: '选择工作区', exact: true }).click()
+        await page.getByRole('menuitem', { name: '添加工作区…', exact: true }).click()
         const picker = page.getByRole('dialog', { name: '选择工作区目录' })
         await picker.waitFor()
         await picker.getByRole('button', { name: '编辑路径', exact: true }).click()

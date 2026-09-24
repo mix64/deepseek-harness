@@ -265,6 +265,9 @@ export function apply(ctx: Context): void {
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId, options) => { uiWorkspace.startSession(workspaceId, options) },
+    startNoFolderSession: () => {
+      void uiWorkspace.openNoFolder().catch((reason: unknown) => { console.warn('new session failed:', reason) })
+    },
     open: openSession,
     searchSessions,
     searchResultLimit: sessions.searchResultLimit,
