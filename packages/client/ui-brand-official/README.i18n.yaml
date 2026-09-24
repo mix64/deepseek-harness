@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-brand-official/README.md
 /:
-  en: a46a90b8cedd5c45
-  zh: 9b4f0d5fd9ffa945
+  en: ae74802ea2522dfe
+  zh: b232184c5161dc6e
 /deepseek-ai-dsh-client-ui-brand-official:
   en: 7cee1be833cea807
   zh: 9953e1b38cb23d34
 /deepseek-ai-dsh-client-ui-brand-official/summary:
-  en: 784b8216e88b0578
-  zh: 70165dea21d9a2ab
+  en: d86c44d8e001f95e
+  zh: 1454f97bb3dcb5e0
 /deepseek-ai-dsh-client-ui-brand-official/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-client-ui-brand-official/use-this-package:
-  en: 8144a213ca978516
-  zh: 43dfefbd708d87bf
-/deepseek-ai-dsh-client-ui-brand-official/use-this-package/choosing-the-profile:
-  en: 876e7a0e21eaa396
-  zh: 596fcdec565e3eae
+  en: 730c34818355e8ac
+  zh: 7ac7ee21b7e086f1
+/deepseek-ai-dsh-client-ui-brand-official/use-this-package/build-profiles:
+  en: 12681e4ffe2f454c
+  zh: 95192eedc1adef18
 /deepseek-ai-dsh-client-ui-brand-official/use-this-package/home-feedback:
   en: f79f52c71a3d1491
   zh: bda67c8b4050316a
