@@ -252,9 +252,9 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
 
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
-  'useSessionStatus' | 'startSession' | 'open' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'
+  'useSessionStatus' | 'startSession' | 'startNoFolderSession' | 'open' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'
   | 'insertWorkspaceBefore' | 't' | 'usePanelInfo'
-  | 'useSessionAccess' | 'useWorkspaceAccess'
+  | 'useRemoteAccess' | 'useSessionAccess' | 'useWorkspaceAccess'
 > & PropsRenderSlots<
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.trailing'
@@ -312,9 +312,9 @@ function EmptySessions({ rowState, onLeaveArchivedOnly, t }: Pick<SessionTreePro
 
 /** The scrolling session tree; unmounting drops the sessions subscription and the session watermarks. */
 function SessionTree({
-  list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds,
+  list, useSessionStatus, startSession, startNoFolderSession, open, workspaces, ungroupedSessionIds,
   rowState, onLeaveArchivedOnly,
-  workspaceReady, animationResetKey, usePanelInfo, useSessionAccess, useWorkspaceAccess,
+  workspaceReady, animationResetKey, usePanelInfo, useRemoteAccess, useSessionAccess, useWorkspaceAccess,
   onSessionRenameRequest,
   renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu,
   insertWorkspaceBefore,
@@ -555,6 +555,7 @@ function SessionTree({
           newShortcut={shortcuts.find(row => row.id === 'session.new')}
           group={group}
           renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
+          useRemoteAccess={useRemoteAccess}
           useWorkspaceAccess={useWorkspaceAccess}
           containsCurrentDescendant={currentAncestors.has(group.key)}
           home={home}
@@ -566,6 +567,10 @@ function SessionTree({
           onCreate={(workspaceId) => {
             setGroupExpanded(group.key, true)
             startSession(workspaceId)
+          }}
+          onCreateNoFolder={() => {
+            setGroupExpanded(group.key, true)
+            startNoFolderSession()
           }}
           drag={workspaceDragProps}
         />
@@ -910,12 +915,14 @@ export function WorkspaceBrowser({
   useSectionScroller,
   useSessions,
   useSessionStatus,
+  useRemoteAccess,
   useSessionAccess,
   useWorkspaceAccess,
   useWorkspaces,
   useStore,
   actions,
   startSession,
+  startNoFolderSession,
   open,
   requestSessionRename,
   notifyArchivedNotOpenable,
@@ -1409,6 +1416,7 @@ export function WorkspaceBrowser({
             )
             : (
               <SessionTree
+                useRemoteAccess={useRemoteAccess}
                 useSessionAccess={useSessionAccess}
                 useWorkspaceAccess={useWorkspaceAccess}
                 usePanelInfo={usePanelInfo}
@@ -1430,6 +1438,7 @@ export function WorkspaceBrowser({
                 rowState={rowState}
                 onLeaveArchivedOnly={leaveArchivedOnly}
                 startSession={startSession}
+                startNoFolderSession={startNoFolderSession}
                 open={guardedOpen}
                 insertWorkspaceBefore={insertWorkspaceBefore}
                 revealSessionId={revealSessionId}

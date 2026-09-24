@@ -12,7 +12,7 @@
 import type { ReactElement, ReactNode, RefObject } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Button, IconFolderCloseRegular, IconPlusOutlineRegular, Menu, Modal, type MenuEntry,
+  Button, IconFolderCloseRegular, IconNewChatOutlineRegular, IconPlusOutlineRegular, Menu, Modal, type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   WorkspaceId, WorkspaceSnapshot, WorkspaceView,
@@ -24,6 +24,7 @@ import { distinguishingPathSuffixes } from './path-suffix.ts'
 import css from './WorkspacePicker.module.css'
 
 const ADD_WORKSPACE = '::add-workspace'
+const NO_FOLDER = '::no-folder'
 
 /** Core flow props: the owner supplies popover control and pick semantics. */
 export interface WorkspacePickFlowProps {
@@ -53,6 +54,10 @@ export interface WorkspacePickFlowProps {
   side?: 'bottom' | 'top' | 'right'
   /** Currently active workspace (trailing check in the picker list). */
   selectedId?: WorkspaceId | undefined
+  /** Offer a Session outside every Workspace; absent hides the entry. */
+  onPickNoFolder?: (() => void) | undefined
+  /** The current Session is a no-folder Session (trailing check on that entry). */
+  noFolderSelected?: boolean | undefined
 }
 
 /**
@@ -74,6 +79,8 @@ export function WorkspacePickFlow({
   onBusyChange,
   side = 'bottom',
   selectedId,
+  onPickNoFolder,
+  noFolderSelected = false,
 }: WorkspacePickFlowProps) {
   // Without an owner-provided anchor, the menu remains hidden.
   const absentAnchor = useRef<HTMLElement>(null)
@@ -106,8 +113,12 @@ export function WorkspacePickFlow({
   const addEntries: MenuEntry[] = flowAvailable
     ? [{ id: ADD_WORKSPACE, label: t('menu.addWorkspace'), icon: <IconPlusOutlineRegular size={16} />, disabled: flowBusy }]
     : []
-  // With workspaces listed, the add action pins below the scroll region
-  // (divider + always visible); otherwise it IS the menu.
+  const noFolderEntries: MenuEntry[] = onPickNoFolder === undefined || addOnly
+    ? []
+    : [{ id: NO_FOLDER, label: t('menu.noFolder'), icon: <IconNewChatOutlineRegular size={16} />, disabled: flowBusy }]
+  const footerEntries = [...addEntries, ...noFolderEntries]
+  // With workspaces listed, the add and no-folder actions pin below the scroll
+  // region (divider + always visible); otherwise they ARE the menu.
   const pinAdd = !addOnly && workspaces.length > 0
   // The resolved name, not `t`, is the memo dependency: the bound seat keeps
   // its identity across a language switch.
@@ -139,7 +150,7 @@ export function WorkspacePickFlow({
       icon: <IconFolderCloseRegular size={16} />,
       disabled: flowBusy,
     }))
-    : addEntries
+    : footerEntries
   // Nothing listed and nothing to add with (a composition that mounts this
   // package without any directory-picker): an empty popover would claim a
   // choice that does not exist, so the anchor gesture shows nothing at all.
@@ -177,7 +188,7 @@ export function WorkspacePickFlow({
   // loading status instead of jumping into a flow the arriving list would have
   // made unnecessary; the add-only surface lists nothing and never waits.
   const listSettled = addOnly || workspaceSnapshot.phase === 'ready'
-  const addIsTheOnlyEntry = !pinAdd && listSettled && addEntries.length === 1
+  const addIsTheOnlyEntry = !pinAdd && listSettled && addEntries.length === 1 && noFolderEntries.length === 0
   // `flowBusy` gates this exactly as it disables the equivalent menu entry: a
   // pick still being adopted owns the surface until it settles.
   useEffect(() => {
@@ -205,6 +216,10 @@ export function WorkspacePickFlow({
       openDirectoryFlow()
       return
     }
+    if (id === NO_FOLDER) {
+      onPickNoFolder?.()
+      return
+    }
     onPick(id as WorkspaceId)
   }
 
@@ -214,8 +229,8 @@ export function WorkspacePickFlow({
         open={open && !addIsTheOnlyEntry && !menuIsEmpty}
         anchor={null}
         items={items}
-        {...pinAdd ? { footer: addEntries } : {}}
-        selectedId={selectedId}
+        {...pinAdd ? { footer: footerEntries } : {}}
+        selectedId={noFolderSelected ? NO_FOLDER : selectedId}
         onSelect={handleSelect}
         onClose={onClose}
         side={side}
@@ -250,11 +265,15 @@ export function WorkspacePickFlow({
  */
 type PickerSurfaceProps = Pick<
   WorkspacePickFlowProps,
-  't' | 'open' | 'anchorRef' | 'useWorkspaces' | 'createWorkspace' | 'useDirectoryFlow' | 'selectedId' | 'onPick' | 'onClose'
+  | 't' | 'open' | 'anchorRef' | 'useWorkspaces' | 'createWorkspace' | 'useDirectoryFlow' | 'selectedId' | 'onPick'
+  | 'onPickNoFolder' | 'noFolderSelected' | 'onClose'
 >
 
 function surfaceFlow(
-  { t, open, anchorRef, useWorkspaces, createWorkspace, useDirectoryFlow, selectedId, onPick, onClose }: PickerSurfaceProps,
+  {
+    t, open, anchorRef, useWorkspaces, createWorkspace, useDirectoryFlow, selectedId, onPick,
+    onPickNoFolder, noFolderSelected, onClose,
+  }: PickerSurfaceProps,
   renderDirectoryFlow: WorkspacePickFlowProps['renderDirectoryFlow'],
 ): ReactElement {
   return (
@@ -268,6 +287,8 @@ function surfaceFlow(
       renderDirectoryFlow={renderDirectoryFlow}
       selectedId={selectedId}
       onPick={onPick}
+      onPickNoFolder={onPickNoFolder}
+      noFolderSelected={noFolderSelected}
       onClose={onClose}
     />
   )

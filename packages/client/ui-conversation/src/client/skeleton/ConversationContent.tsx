@@ -22,8 +22,8 @@ function NoConversationWidthControls() {
 export function ConversationContent(props: ConversationContentProps) {
   const {
     sessionId, phase, hero, useSession, useSessions, useSessionStatus,
-    useWorkspaces, useInput, useComposerBlock, renderSlot, renderSlotChain,
-    selectWorkspace, t, useFactorySlot,
+    useWorkspaces, useInput, useComposerBlock, useNoFolderSessions, renderSlot, renderSlotChain,
+    selectWorkspace, selectNoFolder, t, useFactorySlot,
   } = props
   const session = useSession(snapshot => snapshot)
   const Views = useFactorySlot('views', ConversationSessionView)
@@ -40,6 +40,8 @@ export function ConversationContent(props: ConversationContentProps) {
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<WorkspaceId | undefined>()
+  const [pendingNoFolder, setPendingNoFolder] = useState(false)
+  const noFolderSessionIds = useNoFolderSessions(ids => ids)
   const pickerAnchor = useRef<HTMLButtonElement>(null)
 
   // Publishes the two live measurements floating View chrome reads off the
@@ -72,6 +74,14 @@ export function ConversationContent(props: ConversationContentProps) {
   const pendingWorkspace = workspaces.items.find(
     workspace => workspace.workspaceId === pendingWorkspaceId,
   )
+  // A Session this page opened outside every Workspace; any other unclaimed
+  // blank Session lost its Workspace and still needs a pick.
+  const noFolder = sessionId !== undefined && sessionWorkspace === undefined
+    && noFolderSessionIds.includes(sessionId)
+
+  useEffect(() => {
+    if (pendingNoFolder && noFolder) setPendingNoFolder(false)
+  }, [pendingNoFolder, noFolder])
 
   // Clear the pending pick once the session lands in it, or when the picked
   // workspace disappears from a ready list (deleted from the sidebar).
@@ -103,9 +113,11 @@ export function ConversationContent(props: ConversationContentProps) {
         ?? (workspaces.phase === 'ready' || cwd === undefined || cwd === ''
           ? undefined
           : workspaceLabel(cwd)))
-  const chipTitle = storedChipTitle === undefined
-    ? undefined
-    : workspaceDisplayTitle(storedChipTitle, t('workspace.defaultName'))
+  const chipTitle = pendingWorkspace === undefined && (pendingNoFolder || noFolder)
+    ? t('workspace.noFolder')
+    : storedChipTitle === undefined
+      ? undefined
+      : workspaceDisplayTitle(storedChipTitle, t('workspace.defaultName'))
 
   const heroWorkspaceRow = (
     <div className={css.heroWorkspaceRow}>
@@ -120,8 +132,16 @@ export function ConversationContent(props: ConversationContentProps) {
         open: pickerOpen,
         anchorRef: pickerAnchor,
         selectedId: pendingWorkspaceId ?? sessionWorkspace?.workspaceId,
+        noFolderSelected: pendingWorkspaceId === undefined && (pendingNoFolder || noFolder),
+        onPickNoFolder: () => {
+          setPickerOpen(false)
+          setPendingWorkspaceId(undefined)
+          setPendingNoFolder(true)
+          void selectNoFolder().catch(() => { setPendingNoFolder(false) })
+        },
         onPick: (workspaceId) => {
           setPickerOpen(false)
+          setPendingNoFolder(false)
           setPendingWorkspaceId(workspaceId)
           void selectWorkspace(workspaceId).catch(() => {
             setPendingWorkspaceId(current => current === workspaceId ? undefined : current)

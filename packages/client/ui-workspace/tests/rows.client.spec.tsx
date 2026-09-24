@@ -64,11 +64,13 @@ function SessionNodeItem({ renderSlot = renderNoRowEntries, onRenameRequest = ()
 
 // Direct header specs hold every access answer unless the case refuses one.
 function ProjectRowItem({
-  useWorkspaceAccess = allowAllAccess.useWorkspaceAccess,
+  useRemoteAccess = allowAllAccess.useRemoteAccess, useWorkspaceAccess = allowAllAccess.useWorkspaceAccess,
+  onCreateNoFolder = () => {},
   renderFactorySlot = renderMenuButton, useContextMenuTarget = select => select(null), ...props
-}: Omit<ProjectRowItemProps, 'useWorkspaceAccess' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'>
-  & Partial<Pick<ProjectRowItemProps, 'useWorkspaceAccess' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'>>) {
-  return <ProjectRowItemComponent {...props} useWorkspaceAccess={useWorkspaceAccess}
+}: Omit<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'onCreateNoFolder' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'>
+  & Partial<Pick<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'onCreateNoFolder' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'>>) {
+  return <ProjectRowItemComponent {...props} useRemoteAccess={useRemoteAccess} useWorkspaceAccess={useWorkspaceAccess}
+    onCreateNoFolder={onCreateNoFolder}
     useContextMenu={props.useContextMenu ?? contextMenuHook()} renderFactorySlot={renderFactorySlot}
     useContextMenuTarget={useContextMenuTarget} />
 }
@@ -734,16 +736,29 @@ describe('workspace browser rows', () => {
     expect(props.onCreate).toHaveBeenCalledExactlyOnceWith(props.group.workspaceId)
   })
 
-  it('ungrouped bucket offers no New Session and asks no access', () => {
+  it('ungrouped bucket asks the global resource before it starts a no-folder Session', () => {
     const group: GroupNode = {
       key: 'ungrouped', workspaceId: undefined, cwd: undefined, createdAt: undefined, label: '',
       sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
     }
+    let allowed = false
+    const useRemoteAccess = vi.fn((action: string) => action !== 'session/create' || allowed)
     const useWorkspaceAccess = vi.fn(() => true)
-    render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t}
-      useWorkspaceAccess={useWorkspaceAccess} />)
+    const onCreate = vi.fn()
+    const onCreateNoFolder = vi.fn()
+    const row = () => (
+      <ProjectRowItem group={group} onToggle={vi.fn()} onCreate={onCreate} onCreateNoFolder={onCreateNoFolder} t={t}
+        useRemoteAccess={useRemoteAccess} useWorkspaceAccess={useWorkspaceAccess} />
+    )
+    const view = render(row())
+    expect(useRemoteAccess).toHaveBeenCalledWith('session/create')
     expect(useWorkspaceAccess).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: /新建会话/ })).toBeNull()
+    allowed = true
+    view.rerender(row())
+    fireEvent.click(screen.getByRole('button', { name: /新建会话/ }))
+    expect(onCreateNoFolder).toHaveBeenCalledOnce()
+    expect(onCreate).not.toHaveBeenCalled()
     expect(fireEvent.contextMenu(screen.getByRole('treeitem'))).toBe(true)
   })
 

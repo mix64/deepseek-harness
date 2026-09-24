@@ -224,12 +224,13 @@ type ProjectRowItemProps = {
   containsCurrentDescendant?: boolean
   onToggle: () => void
   onCreate: (workspaceId: WorkspaceId) => void
+  onCreateNoFolder: () => void
   /** Present only for real Workspace rows in the grouped view. */
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
   t: RowTranslate
-} & Pick<WorkspaceBrowserProps, 'useWorkspaceAccess' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'>
+} & Pick<WorkspaceBrowserProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'>
 
 /** The header actions one row offers; an absent create offers no New Session button. */
 interface ProjectRowActions {
@@ -239,16 +240,19 @@ interface ProjectRowActions {
 
 /**
  * Project (workspace) header row: folder + title;
- * hover reveals the chevron and, on a real Workspace, the create button;
- * dwelling on a real Workspace shows its hover card. The ungrouped bucket
- * has neither, because it has no backing Workspace to start a Session in.
+ * hover reveals the chevron and the create button; dwelling on a real
+ * Workspace shows its hover card (the ungrouped bucket has none). The
+ * ungrouped bucket has no backing Workspace, so its create button starts a
+ * no-folder Session.
  * `containsCurrent` arrives on the node (derivation fact, no renderer scan).
- * Create and drag follow the Workspace access snapshot. Menu providers own
+ * Create and drag follow the Workspace access snapshot; the ungrouped
+ * bucket's create follows the global one. Menu providers own
  * their access checks; the ungrouped bucket has no Workspace menu.
  * @param props.group - derived group node.
  * @param props.containsCurrentDescendant - highlight an ancestor even when its subtree is collapsed.
  * @param props.onToggle - expand/collapse the group.
  * @param props.onCreate - start a frontend Session inside the given Workspace.
+ * @param props.onCreateNoFolder - start a no-folder Session from the ungrouped bucket.
  * @param props.drag - optional workspace-row drag wiring.
  * @param props.home - host account home for POSIX hover-path abbreviation.
  * @param props.t - the browser root's locale seat.
@@ -261,9 +265,10 @@ export function ProjectRowItem(props: ProjectRowItemProps) {
     : <WorkspaceProjectRow {...props} workspaceId={workspaceId} />
 }
 
-/** The ungrouped bucket's header: no backing Workspace to start a Session in or reorder. */
+/** The ungrouped bucket's header: no Workspace resource, so starting a no-folder Session there asks the global resource. */
 function UngroupedProjectRow(props: ProjectRowItemProps) {
-  return <ProjectRow {...props} actions={{ reorder: false }} />
+  const create = props.useRemoteAccess('session/create')
+  return <ProjectRow {...props} actions={{ create: create ? props.onCreateNoFolder : undefined, reorder: false }} />
 }
 
 /** A real Workspace's header: every action asks that Workspace's resource. */
@@ -280,7 +285,7 @@ function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { 
 function ProjectRow({
   group, containsCurrentDescendant = false, onToggle, drag: offeredDrag, home, newShortcut, t, actions,
   renderFactorySlot, useContextMenuTarget, useContextMenu,
-}: Omit<ProjectRowItemProps, 'onCreate'> & { actions: ProjectRowActions }) {
+}: Omit<ProjectRowItemProps, 'onCreate' | 'onCreateNoFolder' | 'useRemoteAccess'> & { actions: ProjectRowActions }) {
   const { getTriggerProps } = useContextMenu()
   const drag = actions.reorder ? offeredDrag : undefined
   const create = actions.create
