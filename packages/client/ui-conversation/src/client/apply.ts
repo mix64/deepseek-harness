@@ -119,6 +119,8 @@ interface WorkspaceNavigation {
     workspaceId: Parameters<ConversationInjected['selectWorkspace']>[0],
     beforeOpen: (sessionId: SessionId) => void,
   ): Promise<void>
+  openNoFolder(beforeOpen: (sessionId: SessionId) => void): Promise<void>
+  readonly noFolderSessions: ConversationInjected['hooks']['noFolderSessions']
 }
 
 /** Action registration used by the composer without importing its command-UI consumer. */
@@ -361,35 +363,47 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
+        noFolderSessions: workspaceNavigation.noFolderSessions,
       },
-      selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, (nextId) => {
-        if (sessionId !== undefined && nextId !== sessionId) {
-          const from = inputHub.shell(sessionId)
-          // A draft with a submission in flight stays with the Session that is admitting it.
-          if (from.snapshot.phase !== 'plain' && from.snapshot.phase !== 'claimed') return
-          const draft = from.draftSnapshot
-          const attachmentIds = from.snapshot.attachmentIds
-          const next = inputHub.shell(nextId)
-          if (attachmentIds.length === 0 || next.addAttachments(attachmentIds)) {
-            const binding = sessions.binding(nextId)
-            if (binding === undefined) {
-              throw new Error(`ui-conversation: session "${nextId}" resolved no binding`)
-            }
-            // The same rule as intake: only an ordinary Session stages image uploads.
-            const ordinary = binding.session.getSnapshot().subagent === null
-            concreteConversation(ctx).rebindDraftFiles(nextId, attachmentIds, ordinary)
-            if (draft.text !== '') {
-              next.setDraft(draft)
-              from.setDraft('')
-            }
-            if (attachmentIds.length > 0) {
-              for (const id of attachmentIds) from.removeAttachment(id)
-            }
-          }
-        }
-      }),
+      selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, carryDraft(sessionId)),
+      selectNoFolder: () => workspaceNavigation.openNoFolder(carryDraft(sessionId)),
     }),
   }, ConversationContent)
+
+  /**
+   * Move the blank Session's draft and attachments into the Session a
+   * Workspace or no-folder pick opens.
+   * @param sessionId - Session the pick started from.
+   * @returns the synchronous preparation for the opened Session.
+   */
+  function carryDraft(sessionId: SessionId | undefined): (nextId: SessionId) => void {
+    return (nextId) => {
+      if (sessionId !== undefined && nextId !== sessionId) {
+        const from = inputHub.shell(sessionId)
+        // A draft with a submission in flight stays with the Session that is admitting it.
+        if (from.snapshot.phase !== 'plain' && from.snapshot.phase !== 'claimed') return
+        const draft = from.draftSnapshot
+        const attachmentIds = from.snapshot.attachmentIds
+        const next = inputHub.shell(nextId)
+        if (attachmentIds.length === 0 || next.addAttachments(attachmentIds)) {
+          const binding = sessions.binding(nextId)
+          if (binding === undefined) {
+            throw new Error(`ui-conversation: session "${nextId}" resolved no binding`)
+          }
+          // The same rule as intake: only an ordinary Session stages image uploads.
+          const ordinary = binding.session.getSnapshot().subagent === null
+          concreteConversation(ctx).rebindDraftFiles(nextId, attachmentIds, ordinary)
+          if (draft.text !== '') {
+            next.setDraft(draft)
+            from.setDraft('')
+          }
+          if (attachmentIds.length > 0) {
+            for (const id of attachmentIds) from.removeAttachment(id)
+          }
+        }
+      }
+    }
+  }
 
   const registerConversationSession = () => slots.register({
     name: 'conversation.session',
