@@ -16,6 +16,7 @@ export const uiConversationJa = {
     'placeholder.parentOffline': '親セッションがオフラインのため送信できません。実行中の処理は停止できます',
     'placeholder.hero': '作りたいものを説明、/ でコマンド、@ でファイルやセッションを参照',
     'placeholder.workspace': 'ワークスペースを選択して開始',
+    'workspace.noFolder': 'フォルダなし',
     'placeholder.steerQueue': 'Cmd/Ctrl+Enter でキュー内のすべてのメッセージを割り込み送信',
     'input.commands': 'ファイルを追加、またはコマンドを実行',
     'input.file': 'ファイル',

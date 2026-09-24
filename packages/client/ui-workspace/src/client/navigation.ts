@@ -9,7 +9,7 @@ import type {
   SessionTarget,
   SessionListState,
 } from '@deepseek-ai/dsh-api-session-controller/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
   IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
@@ -60,6 +60,18 @@ export interface UiWorkspace {
    * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
    */
   startSession(workspaceId?: WorkspaceId): void
+  /**
+   * Open a blank Session outside every Workspace in its own private directory,
+   * reusing this page's blank no-folder Session when one is still available.
+   * @param beforeOpen - optional synchronous preparation for the selected Session, skipped after supersession.
+   * @returns completion; a refused creation is shown through the Workspace notice and rethrown.
+   */
+  openNoFolder(beforeOpen?: (sessionId: SessionId) => void): Promise<void>
+  /**
+   * Sessions this page created outside every Workspace, in creation order.
+   * They sit in the sidebar's Ungrouped group; the list is not persisted.
+   */
+  readonly noFolderSessions: ObservableSnapshot<readonly SessionId[]>
   /**
    * Archive a Session and clear it when it is the current selection.
    * @param sessionId - Session to archive.
@@ -130,6 +142,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     {}, { persist: { name: 'dsh.sessions.current' } },
   )
   private mainReference: SessionReference | undefined
+  private noFolderConnecting: Promise<SessionId> | undefined
+  readonly noFolderSessions = createSnapshotStore<readonly SessionId[]>([])
 
   /**
    * @param ctx - Client root Context.
@@ -219,10 +233,41 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     await this.sessions.fork({ sessionId, increaseTitle: true })
   }
 
+  async openNoFolder(beforeOpen?: (sessionId: SessionId) => void): Promise<void> {
+    const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
+    let sessionId: SessionId
+    try {
+      this.noFolderConnecting ??= this.reuseOrCreateNoFolder(navigation)
+        .finally(() => { this.noFolderConnecting = undefined })
+      sessionId = await this.noFolderConnecting
+    } catch (error: unknown) {
+      if (!navigation.aborted) this.notify({ kind: 'createFailed', message: creationFailureMessage(error) })
+      throw error
+    }
+    if (navigation.aborted) return
+    this.replaceMain(sessionId, navigation, 'reveal', beforeOpen)
+  }
+
+  private async reuseOrCreateNoFolder(signal: AbortSignal): Promise<SessionId> {
+    const { items, archivedSessionIds } = this.workspaces.list.getSnapshot()
+    const sessions = this.sessions.list.getSnapshot()
+    const reusable = this.noFolderSessions.getSnapshot().find(id => sessions.byId[id]?.blank === true
+      && !archivedSessionIds.includes(id) && !items.some(item => item.sessionIds.includes(id)))
+    if (reusable !== undefined) return reusable
+    const cwd = await this.workspaces.noFolderDirectory(signal)
+    const sessionId = await this.sessions.create({ cwd })
+    this.noFolderSessions.set([...this.noFolderSessions.getSnapshot(), sessionId])
+    return sessionId
+  }
+
   startSession(workspaceId?: WorkspaceId): void {
     const workspace = this.workspaces.list.getSnapshot()
     const sessions = this.sessions.list.getSnapshot()
     const current = this.mainReference?.sessionId
+    if (workspaceId === undefined && current !== undefined && this.noFolderSessions.getSnapshot().includes(current)) {
+      void this.openNoFolder().catch((reason: unknown) => { console.warn('new session failed:', reason) })
+      return
+    }
     const currentWorkspaceId = current === undefined
       ? undefined
       : workspace.items.find(item => item.sessionIds.includes(current))?.workspaceId

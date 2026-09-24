@@ -3511,6 +3511,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the durable Workspace, or undefined when first-use initialization is ineligible; creates no Session or message.',
       },
       {
+        signature: '@Remote(\'noFolderDirectory\') async noFolderDirectory(signal: AbortSignal): Promise<WorkspaceNoFolderDirectoryValue>',
+        description: 'Resolve a fresh private working directory for a Session outside every Workspace.',
+        parameters: [{ name: 'signal', description: 'caller lifetime; cancels native directory lookup.' }],
+        returns: 'an absolute path that Session creation creates; no Workspace is registered.',
+      },
+      {
         signature: '@Remote(\'rename\') rename(request: WorkspaceRenameRequest): Promise<WorkspaceValue>',
         description: 'Rename one Workspace to a unique non-blank title.',
         parameters: [{ name: 'request', description: 'Workspace identity and proposed title.' }],
@@ -8004,6 +8010,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceInsertSessionBeforeRequest',
     declaration: 'export interface WorkspaceInsertSessionBeforeRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionId: SessionId;\n    readonly beforeSessionId?: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceNoFolderDirectoryValue',
+    declaration: 'export interface WorkspaceNoFolderDirectoryValue {\n    readonly path: string;\n}',
   },
   {
     name: 'WorkspaceOrderValue',

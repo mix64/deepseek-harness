@@ -4,7 +4,7 @@ import type { JaDictionaries } from './types.ts'
 export const uiWorkspaceJa = {
   'workspace': {
     'defaultWorkspace.failed': 'デフォルトのワークスペースを作成できません。「ワークスペースを選択」からフォルダーを選択してください。',
-    'group.ungrouped': '未分類',
+    'group.ungrouped': 'フォルダなし',
     'session.new': '新しいセッション',
     'shortcut.noSession': '先にセッションを選択してください',
     'shortcut.noPicker': 'ディレクトリ選択ダイアログを利用できません',
@@ -40,6 +40,7 @@ export const uiWorkspaceJa = {
     'search.noMatches': '一致するセッションはありません',
     'search.hasMore': '最初の {n} 件の結果のみ表示しています。検索条件を絞り込んでください。',
     'menu.addWorkspace': 'ワークスペースを追加…',
+    'menu.noFolder': 'フォルダなし',
     'picker.loading': 'ワークスペースを読み込み中…',
     'conflict.named': '「{name}」という名前のワークスペースは既に存在します。',
     'folderError.title': 'フォルダーを開けませんでした',
@@ -50,7 +51,7 @@ export const uiWorkspaceJa = {
     'field.workspaceName': 'ワークスペース名',
     'field.sessionName': 'セッション名',
     'delete.workspace': 'ワークスペースを削除',
-    'delete.desc': '「{name}」をワークスペース一覧から削除します。フォルダーとセッションログは保持され、そのセッションは「未分類」に表示されます。',
+    'delete.desc': '「{name}」をワークスペース一覧から削除します。フォルダーとセッションログは保持され、そのセッションは「フォルダなし」に表示されます。',
     'delete.pending': 'ワークスペースを削除中…',
     'menu.fork': 'セッションをフォーク',
     'menu.archiveSession': 'セッションをアーカイブ',

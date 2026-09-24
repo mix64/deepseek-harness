@@ -172,6 +172,7 @@ class FakeSessions implements ISessions {
 
 class FakeWorkspaces implements IWorkspaces {
   readonly initializeDefault = vi.fn<IWorkspaces['initializeDefault']>(async () => undefined)
+  readonly noFolderDirectory = vi.fn<IWorkspaces['noFolderDirectory']>(async () => '/documents/deepseek-harness/no-folder/session')
   readonly list: MutableSource<WorkspaceSnapshot>
   readonly archiveCalls: SessionId[] = []
   readonly unarchiveCalls: SessionId[] = []

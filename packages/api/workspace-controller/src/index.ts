@@ -1,12 +1,14 @@
 /** Host Workspace Remote owner: explicit commands and reconnect-safe state. */
 
+import { randomBytes } from 'node:crypto'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
 import { WorkspaceFeed, workspaceView } from './feed.ts'
-import { defaultWorkspaceDirectory, validateDocumentsDirectory } from './default-directory.ts'
+import { defaultWorkspaceDirectory, harnessDocumentsDirectory, validateDocumentsDirectory } from './default-directory.ts'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
@@ -17,6 +19,7 @@ import type {
   WorkspaceFollowFrame,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
+  WorkspaceNoFolderDirectoryValue,
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
@@ -35,6 +38,21 @@ export interface Config {
   documentsDirectory?: string
   /** Maximum duration of the operating system's Documents lookup. */
   documentsLookupTimeoutMs?: number
+}
+
+/** Parent directory, beside first-use Workspaces, of private no-folder Session directories. */
+const NO_FOLDER_DIRECTORY = 'no-folder'
+
+/**
+ * Name one no-folder Session directory: sortable local creation time plus a random suffix.
+ * @param now - creation time.
+ * @returns a single directory name.
+ */
+function noFolderSessionName(now: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+  const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+  return `${date}-${time}-${randomBytes(3).toString('hex')}`
 }
 
 /** Directory policy after schema defaults have been applied. */
@@ -59,6 +77,8 @@ export class WorkspaceController extends TypertRemoteService {
   private readonly config: ResolvedConfig
   private readonly commands: WorkspaceCommands
   private readonly feed: WorkspaceFeed
+  /** Resolved no-folder parent; the Documents lookup runs once per successful resolution. */
+  private noFolderRoot: string | undefined
 
   /**
    * @param ctx - Host context containing the Workspace registry.
@@ -104,6 +124,22 @@ export class WorkspaceController extends TypertRemoteService {
       )
     })
     return workspace === undefined ? undefined : { workspace: workspaceView(workspace) }
+  }
+
+  /**
+   * Resolve a fresh private working directory for a Session outside every Workspace.
+   * @param signal - caller lifetime; cancels native directory lookup.
+   * @returns an absolute path that Session creation creates; no Workspace is registered.
+   */
+  @Remote('noFolderDirectory')
+  async noFolderDirectory(signal: AbortSignal): Promise<WorkspaceNoFolderDirectoryValue> {
+    if (this.noFolderRoot === undefined) {
+      const timeout = AbortSignal.timeout(this.config.documentsLookupTimeoutMs)
+      this.noFolderRoot = await harnessDocumentsDirectory(
+        NO_FOLDER_DIRECTORY, this.config.documentsDirectory, AbortSignal.any([signal, timeout]),
+      )
+    }
+    return { path: join(this.noFolderRoot, noFolderSessionName(new Date())) }
   }
 
   /**

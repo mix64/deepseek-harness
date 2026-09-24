@@ -70,6 +70,7 @@ function deferred<T>(): Deferred<T> {
 
 class FakeWorkspaceRemote implements WorkspaceRemote {
   readonly initializeDefault = vi.fn<WorkspaceRemote['initializeDefault']>(async () => remoteOk({ workspace: workspace('default') }))
+  readonly noFolderDirectory = vi.fn<WorkspaceRemote['noFolderDirectory']>(async () => remoteOk({ path: '/documents/deepseek-harness/no-folder/session' }))
   readonly calls: Array<{ readonly method: string; readonly request: unknown }> = []
   onCreate: (request: WorkspaceCreateRequest) => Promise<RemoteResult<WorkspaceCreateValue>> = request =>
     Promise.resolve(remoteOk({ workspace: workspace(request.path.split('/').pop() ?? 'workspace'), created: true }))

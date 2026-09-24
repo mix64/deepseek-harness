@@ -66,9 +66,13 @@ function provideWorkspaceNavigation(runtime: SlotTestRuntime): (id: SessionId) =
       openSession(SID)
     }),
     openSession,
+    openNoFolder: vi.fn(async () => {}),
+    noFolderSessions: { getSnapshot: () => NO_FOLDER_SESSIONS, subscribe: () => () => {} },
   } as never)
   return openSession
 }
+
+const NO_FOLDER_SESSIONS: readonly SessionId[] = []
 
 function WorkspaceProbe({ open }: EmptyWorkspaceOwnerProps) {
   const [count, setCount] = useState(0)

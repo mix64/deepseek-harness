@@ -113,6 +113,8 @@ interface WorkspaceNavigation {
     workspaceId: Parameters<ConversationInjected['selectWorkspace']>[0],
     beforeOpen: (sessionId: SessionId) => void,
   ): Promise<void>
+  openNoFolder(beforeOpen: (sessionId: SessionId) => void): Promise<void>
+  readonly noFolderSessions: ConversationInjected['hooks']['noFolderSessions']
 }
 
 /** Action registration used by the composer without importing its command-UI consumer. */
@@ -325,30 +327,42 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
+        noFolderSessions: workspaceNavigation.noFolderSessions,
       },
-      selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, (nextId) => {
-        if (sessionId !== undefined && nextId !== sessionId) {
-          const from = inputHub.shell(sessionId)
-          const draft = from.snapshot.draft
-          const attachmentIds = from.snapshot.attachmentIds
-          const next = inputHub.shell(nextId)
-          if (attachmentIds.length === 0 || next.addAttachments(attachmentIds)) {
-            if (sessions.binding(nextId) === undefined) {
-              throw new Error(`ui-conversation: session "${nextId}" resolved no binding`)
-            }
-            concreteConversation(ctx).rebindDraftFiles(nextId, attachmentIds)
-            if (draft !== '') {
-              next.setDraft(draft)
-              from.setDraft('')
-            }
-            if (attachmentIds.length > 0) {
-              for (const id of attachmentIds) from.removeAttachment(id)
-            }
-          }
-        }
-      }),
+      selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, carryDraft(sessionId)),
+      selectNoFolder: () => workspaceNavigation.openNoFolder(carryDraft(sessionId)),
     }),
   }, ConversationContent)
+
+  /**
+   * Move the blank Session's draft and attachments into the Session a
+   * Workspace or no-folder pick opens.
+   * @param sessionId - Session the pick started from.
+   * @returns the synchronous preparation for the opened Session.
+   */
+  function carryDraft(sessionId: SessionId | undefined): (nextId: SessionId) => void {
+    return (nextId) => {
+      if (sessionId !== undefined && nextId !== sessionId) {
+        const from = inputHub.shell(sessionId)
+        const draft = from.snapshot.draft
+        const attachmentIds = from.snapshot.attachmentIds
+        const next = inputHub.shell(nextId)
+        if (attachmentIds.length === 0 || next.addAttachments(attachmentIds)) {
+          if (sessions.binding(nextId) === undefined) {
+            throw new Error(`ui-conversation: session "${nextId}" resolved no binding`)
+          }
+          concreteConversation(ctx).rebindDraftFiles(nextId, attachmentIds)
+          if (draft !== '') {
+            next.setDraft(draft)
+            from.setDraft('')
+          }
+          if (attachmentIds.length > 0) {
+            for (const id of attachmentIds) from.removeAttachment(id)
+          }
+        }
+      }
+    }
+  }
 
   const registerConversationSession = () => slots.register({
     name: 'conversation.session',
