@@ -92,6 +92,17 @@ export class TestWorkspaces implements IWorkspaces {
   }
 
   /**
+   * Resolve a no-folder directory through a test stub; the default is a fixed path.
+   * @param signal - caller lifetime.
+   * @returns the stubbed absolute path.
+   */
+  async noFolderDirectory(signal?: AbortSignal): Promise<string> {
+    this.calls.push({ method: 'noFolderDirectory', args: [signal] })
+    const stub = this.stubs.get('noFolderDirectory')
+    return await (stub?.(signal) as Promise<string> | undefined) ?? '/documents/deepseek-harness/no-folder/session'
+  }
+
+  /**
    * Rename a Workspace (recorded). The default echoes a minimal view.
    * @param workspaceId - target workspace.
    * @param title - new title.

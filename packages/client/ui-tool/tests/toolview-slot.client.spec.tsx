@@ -23,6 +23,10 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { toolSessionEvents } from './tool-fixtures.client.ts'
 
+/** Stable empty no-folder source for the Workspace navigation stub. */
+const NO_FOLDER_SESSIONS = { getSnapshot: () => NO_FOLDER_IDS, subscribe: () => () => {} }
+const NO_FOLDER_IDS: readonly SessionId[] = []
+
 const SID = 's1' as SessionId
 // jsdom omits font loading events used by the resident composer.
 const fonts = Object.getOwnPropertyDescriptor(document, 'fonts')
@@ -95,6 +99,8 @@ async function bench(nodes: ToolResultNode[]) {
       beforeOpen(SID)
     }),
     openSession: vi.fn(),
+    openNoFolder: vi.fn(async () => {}),
+    noFolderSessions: NO_FOLDER_SESSIONS,
   } as never)
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
@@ -354,6 +360,8 @@ describe('registrant declaration injection', () => {
         beforeOpen(SID)
       }),
       openSession: vi.fn(),
+      openNoFolder: vi.fn(async () => {}),
+      noFolderSessions: NO_FOLDER_SESSIONS,
     } as never)
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.ctx.provide('locale', locale)

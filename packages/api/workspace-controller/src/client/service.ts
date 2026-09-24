@@ -60,6 +60,12 @@ export interface IWorkspaces {
    */
   initializeDefault(signal?: AbortSignal): Promise<WorkspaceView | undefined>
   /**
+   * Resolve a fresh private working directory for a Session outside every Workspace.
+   * @param signal - caller lifetime.
+   * @returns an absolute path that Session creation creates.
+   */
+  noFolderDirectory(signal?: AbortSignal): Promise<string>
+  /**
    * Rename a Workspace.
    * @param workspaceId - target Workspace.
    * @param title - new display title.
@@ -137,6 +143,12 @@ export class WorkspaceController extends Service implements IWorkspaces {
     const result = await this.model.initializeDefault(signal)
     if (!result.ok) throw new WorkspaceCreateError(result.error)
     return result.value?.workspace
+  }
+
+  async noFolderDirectory(signal?: AbortSignal): Promise<string> {
+    const result = await this.model.noFolderDirectory(signal)
+    if (!result.ok) throw commandError('noFolderDirectory', result.error)
+    return result.value.path
   }
 
   async rename(workspaceId: WorkspaceId, title: string): Promise<WorkspaceView> {

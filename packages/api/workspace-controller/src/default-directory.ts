@@ -39,6 +39,23 @@ export async function defaultWorkspaceDirectory(
   signal: AbortSignal,
   internals: DocumentsDirectoryInternals = {},
 ): Promise<string> {
+  return harnessDocumentsDirectory(DEFAULT_WORKSPACE_DIRECTORY, documentsDirectory, signal, internals)
+}
+
+/**
+ * Resolve one directory below the Documents `deepseek-harness` directory without creating files.
+ * @param directoryName - single child directory name.
+ * @param documentsDirectory - explicit deployment override for the system Documents directory.
+ * @param signal - caller lifetime and lookup deadline.
+ * @param internals - platform facts and native command runner.
+ * @returns the absolute candidate path.
+ */
+export async function harnessDocumentsDirectory(
+  directoryName: string,
+  documentsDirectory: string | undefined,
+  signal: AbortSignal,
+  internals: DocumentsDirectoryInternals = {},
+): Promise<string> {
   const platform = internals.platform ?? process.platform
   const paths = platform === 'win32' ? win32 : posix
   signal.throwIfAborted()
@@ -74,5 +91,5 @@ export async function defaultWorkspaceDirectory(
   }
   directory = validateDocumentsDirectory(directory, platform)
   signal.throwIfAborted()
-  return paths.join(directory, 'deepseek-harness', DEFAULT_WORKSPACE_DIRECTORY)
+  return paths.join(directory, 'deepseek-harness', directoryName)
 }
