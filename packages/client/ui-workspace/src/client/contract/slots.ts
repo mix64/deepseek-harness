@@ -240,6 +240,8 @@ export type WorkspaceBrowserInjected = {
    * Workspace, then the recent Workspace, or clear into the New Session view.
    */
   startSession: (workspaceId?: WorkspaceId) => void
+  /** Start a New Session outside every Workspace, in its own private directory. */
+  startNoFolderSession: () => void
   /** Open a real Session. */
   open: (sessionId: SessionId) => void
   /**

@@ -329,8 +329,16 @@ export type ConvViewProps = PropsRuntime<'conversation.view'>
 export interface ConversationInjected {
   /** Connect and open a blank Session in the selected Workspace. */
   selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
-  /** Session-addressed composer block source, or the stable absent source. */
-  hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
+  /** Connect and open a blank Session outside every Workspace, in its own private directory. */
+  selectNoFolder: () => Promise<void>
+  /**
+   * Session-addressed composer block source, or the stable absent source; and
+   * the Sessions this page created outside every Workspace.
+   */
+  hooks: {
+    composerBlock: ObservableSnapshot<ComposerBlock | undefined>
+    noFolderSessions: ObservableSnapshot<readonly SessionId[]>
+  }
 }
 
 /** Business callbacks injected into the strict Session body. */
@@ -519,5 +527,9 @@ export interface EmptyWorkspaceOwnerProps {
   /** Currently selected Workspace, when available. */
   selectedId?: WorkspaceId | undefined
   onPick: (workspaceId: WorkspaceId) => void
+  /** Pick a Session outside every Workspace; absent hides that choice. */
+  onPickNoFolder?: (() => void) | undefined
+  /** The blank Session already sits outside every Workspace. */
+  noFolderSelected?: boolean | undefined
   onClose: () => void
 }
