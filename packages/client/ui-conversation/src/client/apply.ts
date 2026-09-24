@@ -115,6 +115,8 @@ interface WorkspaceNavigation {
     workspaceId: Parameters<ConversationShellInjected['openWorkspace']>[0],
     beforeOpen: (sessionId: SessionId) => void,
   ): Promise<void>
+  openNoFolder(beforeOpen: (sessionId: SessionId) => void): Promise<void>
+  readonly noFolderSessions: ConversationInjected['hooks']['noFolderSessions']
 }
 
 /** Action registration used by the composer without importing its command-UI consumer. */
@@ -331,6 +333,7 @@ export function apply(ctx: Context, config: SyncedConfig<ConversationConfig>): v
 
   const shellInjected: ConversationShellInjected = {
     openWorkspace: (workspaceId, adopt) => workspaceNavigation.openWorkspace(workspaceId, adopt),
+    openNoFolder: adopt => workspaceNavigation.openNoFolder(adopt),
   }
 
   const registerConversationRoot = () => slots.register({
@@ -362,6 +365,7 @@ export function apply(ctx: Context, config: SyncedConfig<ConversationConfig>): v
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
+        noFolderSessions: workspaceNavigation.noFolderSessions,
       },
       moveDraft: (nextId) => {
         if (sessionId !== undefined && nextId !== sessionId) {

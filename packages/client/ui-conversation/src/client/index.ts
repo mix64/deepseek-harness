@@ -94,7 +94,7 @@ export type {
   HeroAgentPresetOwnerProps, HeroBrandMarkOwnerProps, HeroFrameOwnerProps, InputControlOwnerProps, InputZone,
   MessageImageLabels, MessageImageLoader, MessageImageSource, MessageImagesContentInput, MessageImagesOwnerProps, UseConversation,
   UserTextInput, UserTextInjected, UserTextNodeOwnerProps, UserTextNodeProps,
-  WorkspaceSelectedHandler, WorkspaceSessionAdopter,
+  NoFolderSelectedHandler, WorkspaceSelectedHandler, WorkspaceSessionAdopter,
   UseConversationViews,
 } from './contract/slots.ts'
 export type {

@@ -92,6 +92,18 @@ export interface UiWorkspace {
    */
   startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void
   /**
+   * Open a blank Session outside every Workspace in its own private directory,
+   * reusing this page's blank no-folder Session when one is still available.
+   * @param beforeOpen - optional synchronous preparation for the selected Session, skipped after supersession.
+   * @returns completion; a refused creation is shown through the Workspace notice and rethrown.
+   */
+  openNoFolder(beforeOpen?: (sessionId: SessionId) => void): Promise<void>
+  /**
+   * Sessions this page created outside every Workspace, in creation order.
+   * They sit in the sidebar's Ungrouped group; the list is not persisted.
+   */
+  readonly noFolderSessions: ObservableSnapshot<readonly SessionId[]>
+  /**
    * Archive a Session and clear it when it is the current selection.
    * @param sessionId - Session to archive.
    * @param options - `stopActivity` asks the Host to stop the Session's running work instead of refusing.
@@ -178,6 +190,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   private mainReference: SessionReference | undefined
   private readonly recentViews: RecentSessionViews
   private restorationNavigation: AbortSignal | undefined
+  private noFolderConnecting: Promise<SessionId> | undefined
+  readonly noFolderSessions = createSnapshotStore<readonly SessionId[]>([])
 
   /**
    * @param ctx - Client root Context.
@@ -343,6 +357,33 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     })
   }
 
+  async openNoFolder(beforeOpen?: (sessionId: SessionId) => void): Promise<void> {
+    const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
+    let sessionId: SessionId
+    try {
+      this.noFolderConnecting ??= this.reuseOrCreateNoFolder(navigation)
+        .finally(() => { this.noFolderConnecting = undefined })
+      sessionId = await this.noFolderConnecting
+    } catch (error: unknown) {
+      if (!navigation.aborted) this.notify({ kind: 'createFailed', message: creationFailureMessage(error) })
+      throw error
+    }
+    if (navigation.aborted) return
+    this.replaceMain(sessionId, navigation, 'reveal', beforeOpen)
+  }
+
+  private async reuseOrCreateNoFolder(signal: AbortSignal): Promise<SessionId> {
+    const { items, archivedSessionIds } = this.workspaces.list.getSnapshot()
+    const sessions = this.sessions.list.getSnapshot()
+    const reusable = this.noFolderSessions.getSnapshot().find(id => sessions.byId[id]?.blank === true
+      && !archivedSessionIds.includes(id) && !items.some(item => item.sessionIds.includes(id)))
+    if (reusable !== undefined) return reusable
+    const cwd = await this.workspaces.noFolderDirectory(signal)
+    const sessionId = await this.sessions.create({ cwd })
+    this.noFolderSessions.set([...this.noFolderSessions.getSnapshot(), sessionId])
+    return sessionId
+  }
+
   startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void {
     const { agentPreset, ...draft } = options ?? {}
     const draftOptions = options === undefined ? undefined : draft
@@ -351,6 +392,15 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const workspace = this.workspaces.list.getSnapshot()
     const sessions = this.sessions.list.getSnapshot()
     const current = this.mainReference?.sessionId
+    const prepare = initializeDraft ? (id: SessionId): void => {
+      const binding = this.sessions.binding(id)
+      if (binding === undefined) this.draftPreparationFailed()
+      this.prepareDraft(binding, draftOptions)
+    } : undefined
+    if (workspaceId === undefined && current !== undefined && this.noFolderSessions.getSnapshot().includes(current)) {
+      void this.openNoFolder(prepare).catch((reason: unknown) => { console.warn('new session failed:', reason) })
+      return
+    }
     const currentWorkspaceId = current === undefined
       ? undefined
       : workspace.items.find(item => item.sessionIds.includes(current))?.workspaceId
@@ -366,11 +416,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       this.clearMain()
       return
     }
-    const opening = this.openWorkspace(target, initializeDraft ? (id) => {
-      const binding = this.sessions.binding(id)
-      if (binding === undefined) this.draftPreparationFailed()
-      this.prepareDraft(binding, draftOptions)
-    } : undefined, agentPreset === undefined ? {} : { agentPreset })
+    const opening = this.openWorkspace(target, prepare, agentPreset === undefined ? {} : { agentPreset })
     void opening.catch(
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )

@@ -479,10 +479,18 @@ export type WorkspaceSessionAdopter = (sessionId: SessionId) => void
  */
 export type WorkspaceSelectedHandler = (workspaceId: WorkspaceId, adopt: WorkspaceSessionAdopter) => Promise<void>
 
+/**
+ * Handles the Hero's "No folder" pick: resolves a blank Session outside every Workspace, shows it in place of the
+ * Session shown before, and calls `adopt` with it in the same step. A pick that failed rejects.
+ */
+export type NoFolderSelectedHandler = (adopt: WorkspaceSessionAdopter) => Promise<void>
+
 /** Business callbacks injected into the main Conversation shell. */
 export interface ConversationShellInjected {
   /** Open the Workspace's blank Session as the main Session. */
   openWorkspace: WorkspaceSelectedHandler
+  /** Open a blank Session outside every Workspace, in its own private directory, as the main Session. */
+  openNoFolder: NoFolderSelectedHandler
 }
 
 /** Business callbacks injected into the shared Conversation content. */
@@ -492,8 +500,14 @@ export interface ConversationInjected {
    * with a submission in flight stays where it is.
    */
   moveDraft: WorkspaceSessionAdopter
-  /** Session-addressed composer block source, or the stable absent source. */
-  hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
+  /**
+   * Session-addressed composer block source, or the stable absent source; and
+   * the Sessions this page created outside every Workspace.
+   */
+  hooks: {
+    composerBlock: ObservableSnapshot<ComposerBlock | undefined>
+    noFolderSessions: ObservableSnapshot<readonly SessionId[]>
+  }
 }
 
 /** Business callbacks injected into the strict Session body. */
@@ -707,6 +721,8 @@ export interface ConversationContentInputProps {
   hero: boolean
   /** What a Workspace picked in the Hero does in this occurrence; the main occurrence opens it as the main Session. */
   onWorkspaceSelected: WorkspaceSelectedHandler
+  /** What the Hero's "No folder" pick does in this occurrence; absent hides that choice. */
+  onNoFolderSelected?: NoFolderSelectedHandler | undefined
   /** Text the blank-session Hero shows instead of its default headline and preview badge. */
   headline?: string | undefined
 }
@@ -770,5 +786,9 @@ export interface EmptyWorkspaceOwnerProps {
   /** Currently selected Workspace, when available. */
   selectedId?: WorkspaceId | undefined
   onPick: (workspaceId: WorkspaceId) => void
+  /** Pick a Session outside every Workspace; absent hides that choice. */
+  onPickNoFolder?: (() => void) | undefined
+  /** The blank Session already sits outside every Workspace. */
+  noFolderSelected?: boolean | undefined
   onClose: () => void
 }

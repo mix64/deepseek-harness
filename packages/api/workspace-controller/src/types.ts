@@ -66,6 +66,12 @@ export interface WorkspaceCreateRequest {
   readonly path: string
 }
 
+/** Private working directory for one Session outside every Workspace. */
+export interface WorkspaceNoFolderDirectoryValue {
+  /** Absolute path under the Documents `deepseek-harness/no-folder` directory; not yet created. */
+  readonly path: string
+}
+
 /** Created or previously registered Workspace. */
 export interface WorkspaceCreateValue {
   readonly workspace: WorkspaceView

@@ -12,6 +12,7 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteValue,
   WorkspaceInsertSessionBeforeRequest,
+  WorkspaceNoFolderDirectoryValue,
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
@@ -110,6 +111,15 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     const result = await this.remote.initializeDefault(signal)
     if (result.ok && result.value !== undefined) this.upsert(result.value.workspace)
     return result
+  }
+
+  /**
+   * Resolve a fresh private directory for a Session outside every Workspace.
+   * @param signal - caller lifetime.
+   * @returns generated Remote result; no Workspace row changes.
+   */
+  noFolderDirectory(signal?: AbortSignal): Promise<RemoteResult<WorkspaceNoFolderDirectoryValue>> {
+    return this.remote.noFolderDirectory(signal)
   }
 
   /**
