@@ -41,7 +41,7 @@ const COLLAPSE_SETTLE_MS = 150
  */
 const SCROLLBAR_LINGER_MS = 2000
 
-/** Format complete-build metadata for the local brand badge. */
+/** Format complete-build metadata copied from the local brand. */
 function localBuildVersion(): string | undefined {
   const version = process.env.DSH_CLIENT_VERSION
   if (version === undefined) return undefined
@@ -241,7 +241,7 @@ export function SidebarRoot({
   }, [pointerInside])
 
   const buildVersion = localBuildVersion()
-  // The local-build fallbacks copy the badge text; the brand button below
+  // The local-build fallbacks copy the build version; the brand button below
   // skips New Session for clicks inside them. The click still bubbles, so
   // document-level outside-click listeners see it.
   // Each successful copy bumps the key so a repeated copy replays the toast.
@@ -323,12 +323,7 @@ export function SidebarRoot({
                 {renderSlot('sidebar.brand.name', {}, {
                   fallback: buildVersion === undefined
                     ? <span className={css.fallbackBrandName}>{t('brand.localBuild')}</span>
-                    : (
-                      <span className={clsx(css.localBuildBrand, css.copyVersion)} data-copy-version onClick={copyVersion(buildVersion)}>
-                        <span className={css.localBuildTitle}>{t('brand.localBuild')}</span>
-                        <span className={css.buildVersion}>{buildVersion}</span>
-                      </span>
-                    ),
+                    : <span className={clsx(css.fallbackBrandName, css.copyVersion)} data-copy-version onClick={copyVersion(buildVersion)}>{t('brand.localBuild')}</span>,
                 })}
               </span>
             </span>

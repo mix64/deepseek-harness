@@ -138,19 +138,10 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
               style="display: contents;"
             >
               <span
-                class="localBuildBrand copyVersion"
+                class="fallbackBrandName copyVersion"
                 data-copy-version="true"
               >
-                <span
-                  class="localBuildTitle"
-                >
-                  DSH Local Build
-                </span>
-                <span
-                  class="buildVersion"
-                >
-                  1.2.3-rc.4-abc1234-dirty
-                </span>
+                DeepSeek Harness
               </span>
             </div>
           </span>
@@ -386,19 +377,10 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
               style="display: contents;"
             >
               <span
-                class="localBuildBrand copyVersion"
+                class="fallbackBrandName copyVersion"
                 data-copy-version="true"
               >
-                <span
-                  class="localBuildTitle"
-                >
-                  DSH Local Build
-                </span>
-                <span
-                  class="buildVersion"
-                >
-                  1.2.3-rc.4-abc1234-dirty
-                </span>
+                DeepSeek Harness
               </span>
             </div>
           </span>
@@ -530,19 +512,10 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
               style="display: contents;"
             >
               <span
-                class="localBuildBrand copyVersion"
+                class="fallbackBrandName copyVersion"
                 data-copy-version="true"
               >
-                <span
-                  class="localBuildTitle"
-                >
-                  DSH 本地构建
-                </span>
-                <span
-                  class="buildVersion"
-                >
-                  1.2.3-rc.4-abc1234-dirty
-                </span>
+                DeepSeek Harness
               </span>
             </div>
           </span>
