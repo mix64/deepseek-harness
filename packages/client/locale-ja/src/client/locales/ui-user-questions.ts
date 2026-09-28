@@ -1,0 +1,38 @@
+import type { JaDictionaries } from './types.ts'
+
+/** Japanese dictionaries for the `@deepseek-ai/dsh-client-ui-user-questions` namespaces. */
+export const uiUserQuestionsJa = {
+  'question': {
+    'error.incomplete': '先にこの質問に回答してください。',
+    'error.unanswered': '選択肢を選ぶか、独自の回答を入力してください。',
+    'error.unavailable': '現在は送信できません。しばらくしてからもう一度お試しください。',
+    'error.resubmit': '作業が続行される前に回答が届きませんでした。もう一度送信してください。',
+    'status.sent': '回答を送信しました。パネルを閉じられませんでした。',
+    'wait.takeTime': 'ゆっくり回答する',
+    'wait.countdown': '{seconds} 秒後に作業を続行',
+    'wait.paused': '一時停止中 · 残り {seconds} 秒',
+    'wait.held': '回答するまで待機します',
+    'wait.continued': '作業を続行しました — 引き続き回答できます',
+    'review.status': '回答済み',
+    'review.skipped': 'この質問はスキップされました。',
+    'reply.label': '保留中だった質問に回答',
+    'reply.open': '質問の詳細を開く',
+    'reply.close': '質問の詳細を閉じる',
+    'reply.answerLabel': '回答: ',
+    'reply.skipped': 'スキップ済み',
+    'nav.prev': '前の質問',
+    'nav.next': '次の質問',
+    'nav.minimize': '質問カードを折りたたむ',
+    'nav.maximize': '質問カードを展開',
+    'nav.cancel': 'すべての質問を破棄',
+    'nav.close': 'パネルを閉じる — ツール呼び出しから再び開けます',
+    'option.recommended': '推奨',
+    'custom.placeholder': '回答を入力',
+    'action.skip': 'スキップ',
+    'action.next': '次へ',
+    'plan.header': 'プランのレビュー',
+    'plan.approve': '承認',
+    'plan.decline': '拒否',
+    'plan.discuss': '変更を依頼',
+  },
+} satisfies JaDictionaries
