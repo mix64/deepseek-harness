@@ -1,0 +1,18 @@
+import type { JaDictionaries } from './types.ts'
+
+/** Japanese dictionaries for the `@deepseek-ai/dsh-client-ui-reference` namespaces. */
+export const uiReferenceJa = {
+  'reference': {
+    'section.files': 'ファイルとフォルダー',
+    'section.subagents': 'サブエージェント',
+    'section.sessions': 'セッション',
+    'candidate.noCwd': '（作業ディレクトリなし）',
+    'crumb.root': 'ワークスペース',
+    'time.now': 'たった今',
+    'time.minutes': '{n}分',
+    'time.hours': '{n}時間',
+    'time.days': '{n}日',
+    'time.months': '{n}か月',
+    'time.years': '{n}年',
+  },
+} satisfies JaDictionaries

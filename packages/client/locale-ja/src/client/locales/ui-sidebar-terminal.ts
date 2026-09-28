@@ -1,0 +1,35 @@
+import type { JaDictionaries } from './types.ts'
+
+/** Japanese dictionaries for the `@deepseek-ai/dsh-client-ui-sidebar-terminal` namespaces. */
+export const uiSidebarTerminalJa = {
+  'sidebarTerminal': {
+    'shortcut.noSession': '先にセッションを選択してください',
+    'recoveryFailed': 'ターミナルを復元できませんでした: {message}',
+    'retryRecovery': 'ターミナルの復元を再試行',
+    'shell': 'シェルを選択',
+    'shellLoading': 'シェルを読み込み中…',
+    'shellEmpty': '利用可能なシェルがありません',
+    'description': 'セッションのワークスペースでコマンドを実行',
+    'title': 'ターミナル',
+    'new': '新しいターミナル',
+    'loading': 'ターミナル環境を読み込み中…',
+    'creating': '起動中…',
+    'connecting': '接続中…',
+    'disconnected': '切断されました。',
+    'reconnect': '再接続',
+    'readonly': 'このビューは読み取り専用です。',
+    'control': '操作を引き継ぐ',
+    'closed': 'ターミナルは閉じられました。',
+    'exited': 'プロセスが終了しました（{code}）',
+    'failed': 'ターミナルエラー: {message}',
+    'rename': 'ターミナル名',
+    'unavailable': '利用不可',
+    'retry': '再試行',
+    'cleanupFailed': 'ターミナル「{title}」を終了できませんでした: {message}',
+    'missingTerminal': 'このターミナルはもう存在しません。新しいターミナルを開いてください。',
+    'inputFull': '入力バッファーがいっぱいです。再接続してからもう一度お試しください。',
+    'attachmentEnded': 'ターミナルの接続が終了しました。続行するには再接続してください。',
+    'invalidOutput': 'ターミナルの画面を受信できませんでした。再接続すると復元されます。',
+    'terminalLimit': 'ターミナル数が上限に達しました。使用していないターミナルを閉じてからもう一度お試しください。終了済みのターミナルも上限に含まれます。',
+  },
+} satisfies JaDictionaries
