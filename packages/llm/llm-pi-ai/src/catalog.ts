@@ -29,6 +29,7 @@ import type {
   Provider,
   ThinkingLevelMap,
 } from '@earendil-works/pi-ai'
+import { CATALOG_SUPPLEMENT } from './catalog-supplement.ts'
 
 /**
  * Pricing for a model the installed catalog does not describe. The harness
@@ -194,14 +195,20 @@ export function catalogProviderIds(): readonly string[] {
 }
 
 /**
- * The installed catalog models for one route, indexed by model id.
+ * The catalog models for one route, indexed by model id: the installed pi-ai
+ * entries, then the {@link CATALOG_SUPPLEMENT} entries whose id the installed
+ * catalog does not describe.
  * @param provider - provider route key.
  * @returns catalog models by id; empty for a route pi-ai does not ship.
  */
 export function catalogModels(provider: string): Map<string, Model<Api>> {
   if (!catalogProviders().has(provider)) return new Map()
   const models = getBuiltinModels(provider as BuiltinProvider) as Model<Api>[]
-  return new Map(models.map(model => [model.id, model]))
+  const index = new Map<string, Model<Api>>(models.map(model => [model.id, model]))
+  for (const model of CATALOG_SUPPLEMENT[provider] ?? []) {
+    if (!index.has(model.id)) index.set(model.id, model)
+  }
+  return index
 }
 
 /**
