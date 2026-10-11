@@ -204,7 +204,7 @@ it.each(['--unsigned', '--prepare-only'])('keeps %s hardware-free and creates no
   expect(withWindowsSigningStage).not.toHaveBeenCalled()
   for (const call of run.run.mock.calls) expect(call[3].env).not.toHaveProperty('DSH_DESKTOP_WINDOWS_TOKEN_PIN')
   expect(writeFileSync).not.toHaveBeenCalled()
-  expect(stages.includes('exec tsx scripts/smoke-packaged-runtime.ts --unsigned')).toBe(mode === '--unsigned')
+  expect(stages.some(stage => stage.includes('smoke-packaged-runtime'))).toBe(false)
 })
 
 it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('selects branding from the signing mode for %s', async (target) => {
