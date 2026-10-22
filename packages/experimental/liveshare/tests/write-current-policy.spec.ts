@@ -170,7 +170,7 @@ describe('LiveShare current write policy', () => {
     expect(readFileSync(path, 'utf8')).toBe('viewer\n')
     expect(publish).toHaveBeenCalledOnce()
     expect(publish.mock.calls[0]?.[4]).toEqual({
-      mode: 'workspace-write', workspaceRoot: root, sessionId: agent.session.id,
+      mode: 'workspace-write', workspaceRoot: root, sessionId: agent.session.id, additionalRoots: [],
     })
     expect(readdirSync(deploymentRoot)).toEqual([])
   })
@@ -209,7 +209,7 @@ describe('LiveShare current write policy', () => {
       expect(text(result)).toMatch(/read-only/u)
       expect(publish).toHaveBeenCalledOnce()
       expect(publish.mock.calls[0]?.[4]).toEqual({
-        mode: 'read-only', workspaceRoot: root, sessionId: agent.session.id,
+        mode: 'read-only', workspaceRoot: root, sessionId: agent.session.id, additionalRoots: [],
       })
       expect(readFileSync(join(root, 'file.txt'), 'utf8')).toBe('original\n')
       if (!present) expect(existsSync(path)).toBe(false)
@@ -307,7 +307,7 @@ describe('LiveShare current write policy', () => {
     expect(result.isError).toBe(false)
     expect(readFileSync(path, 'utf8')).toBe('owner\n')
     expect(ordinary.mock.calls[0]?.[4]).toEqual({
-      mode: 'workspace-write', workspaceRoot: root, sessionId: agent.session.id,
+      mode: 'workspace-write', workspaceRoot: root, sessionId: agent.session.id, additionalRoots: [],
     })
     // And the grant still bounds it: a path outside the Session's workspace is refused.
     const outside = join(deploymentRoot, 'escaped.txt')

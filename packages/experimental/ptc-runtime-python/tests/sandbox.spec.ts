@@ -19,7 +19,7 @@ const sandboxUsable = await (async () => {
   const ctx = new Context()
   try {
     await ctx.plugin(Sandbox, {})
-    await ctx.sandbox.confine([process.execPath, '--version'], { mode: 'read-only', workspaceRoot: process.cwd() })
+    await ctx.sandbox.confine([process.execPath, '--version'], { mode: 'read-only', workspaceRoot: process.cwd(), additionalRoots: [] })
     return true
   } catch (error: unknown) {
     if (error instanceof SandboxUnavailableError) return false
@@ -92,7 +92,7 @@ describe('Python file sandbox', () => {
 
   it('forwards a complete explicit policy and defaults cwd to its workspace', async () => {
     const { ctx, runtime, root } = await setup()
-    const selected = { mode: 'workspace-write' as const, workspaceRoot: root, sessionId: SessionId('python-policy-test') }
+    const selected = { mode: 'workspace-write' as const, workspaceRoot: root, additionalRoots: [], sessionId: SessionId('python-policy-test') }
     const wrap = vi.spyOn(ctx.sandbox, 'confine').mockImplementation(async argv => confinement(argv))
     const spec = runtime.resolve({ program: 'import os\nreturn os.getcwd()', bindings: [], sandboxPolicy: selected })
     expect(spec.sandboxPolicy).toBe(selected)
@@ -108,7 +108,7 @@ describe('Python file sandbox', () => {
     const target = join(root, 'outside.txt')
     const result = await runtime.run(runtime.resolve({
       program: `open(${JSON.stringify(target)}, "w").write("allowed")\nreturn 42`, bindings: [],
-      sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: root },
+      sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: root, additionalRoots: [] },
     }))
     expect(result.error).toBeUndefined()
     expect(result.sandbox).toEqual({ mode: 'danger-full-access', denied: false })
@@ -148,7 +148,7 @@ describe('Python file sandbox', () => {
     const { ctx, run, root } = await setup()
     const confine = ctx.sandbox.confine.bind(ctx.sandbox)
     const { resolvePythonBin } = await import('../src/index.ts')
-    const selected = await confine([process.execPath, '--version'], { mode: 'read-only', workspaceRoot: root })
+    const selected = await confine([process.execPath, '--version'], { mode: 'read-only', workspaceRoot: root, additionalRoots: [] })
     const executable = resolvePythonBin(selected.argv[0]!)
     if (executable === undefined) throw new Error('expected an executable sandbox launcher')
     const alias = 'python-test-private-sandbox-launcher'

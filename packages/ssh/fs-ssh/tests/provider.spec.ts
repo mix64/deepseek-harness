@@ -22,7 +22,7 @@ async function setup() {
   class Policy extends Service {
     readonly defaultMode = 'read-only'
     constructor(ctx: Context) { super(ctx, 'sandboxPolicy') }
-    resolve(): SandboxExecutionPolicy { return { mode: 'read-only', workspaceRoot: '/remote/work' } }
+    resolve(): SandboxExecutionPolicy { return { mode: 'read-only', workspaceRoot: '/remote/work', additionalRoots: [] } }
   }
   const ctx = new Context()
   const fibers = [await ctx.plugin(WireConnection), await ctx.plugin(Policy), await ctx.plugin(SshFileSystem)]
@@ -108,7 +108,7 @@ describe('SSH filesystem provider', () => {
     const edited = { version: 'v3', before: 'new', after: 'next' }
     dispatch.mockResolvedValueOnce(written).mockResolvedValueOnce(edited)
     const signal = new AbortController().signal
-    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: '/remote/link/..' }
+    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: '/remote/link/..', additionalRoots: [] }
     const expected = { kind: 'replaceIfVersion' as const, version: FsVersion('v1') }
     const edit = { oldString: 'new', newString: 'next', replaceAll: false }
     expect(await fs.writeText(target, 'new', expected, signal, policy)).toEqual(written)
@@ -206,9 +206,9 @@ describe('SSH filesystem provider', () => {
 it.each([false, true])('forwards patch/delete/move with explicit policy %s and preserves partial results', async (explicit) => {
   const { fs, dispatch } = await setup()
   const signal = new AbortController().signal
-  const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: '/remote/work' }
+  const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: '/remote/work', additionalRoots: [] }
   const selected = explicit ? policy : undefined
-  const resolved = explicit ? policy : { mode: 'read-only', workspaceRoot: '/remote/work' }
+  const resolved = explicit ? policy : { mode: 'read-only', workspaceRoot: '/remote/work', additionalRoots: [] }
   const expected = { version: FsVersion('v1') }
   const hunks = [{ lineNumber: 3, context: 'anchor', oldLines: ['old'], newLines: ['new'], isEndOfFile: false }]
   const edited = { version: 'v2', before: 'old', after: 'new' }

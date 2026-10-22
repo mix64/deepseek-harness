@@ -885,7 +885,8 @@ describe('create', () => {
   it('passes a preallocated id and preserves it on ordinary failure', async ({ bench }) => {
     const b = bench()
     b.mock.remote.session.create.mockResolvedValue(ok({ sessionId: sid('fresh') }))
-    await expect(b.svc.create({ cwd: '/w', sessionId: sid('fresh') })).resolves.toBe('fresh')
+    await expect(b.svc.create({ cwd: '/w', sessionId: sid('fresh') }))
+      .resolves.toEqual({ sessionId: 'fresh', rejectedAdditionalRoots: [] })
     expect(b.mock.remote.session.create).toHaveBeenCalledExactlyOnceWith({ cwd: '/w', sessionId: 'fresh' })
     b.mock.remote.session.create.mockResolvedValue(err(new RemoteError('gateway/internal', '爆了', {})))
     const failure = await b.svc.create({ sessionId: sid('candidate') }).catch((error: unknown) => error)
@@ -899,7 +900,7 @@ describe('create', () => {
   it('publishes a created identity without implicitly retaining its binding', async ({ bench }) => {
     const b = bench()
     b.mock.remote.session.create.mockResolvedValue(ok({ sessionId: sid('born') }))
-    const born = await b.svc.create({ workspaceId: 'ws' as never })
+    const { sessionId: born } = await b.svc.create({ workspaceId: 'ws' as never })
     // Synchronously after resolution — the draft hand-off contract: the
     // create echo IS the entity entering the client's view (blank row +
     // catalog publication), no notifier flush in between.
@@ -929,6 +930,29 @@ describe('create', () => {
       rpcError: { code: 'session/workspace-attach-failed' },
     })
     expect(b.svc.list.getSnapshot().byId[sid('published')]).toMatchObject({ id: 'published', blank: true })
+  })
+
+  it('forwards additional roots and reports the ones the Host refused', async ({ bench }) => {
+    const b = bench()
+    b.mock.remote.session.create.mockResolvedValue(ok({ sessionId: sid('born'), rejectedAdditionalRoots: ['/gone'] }))
+    await expect(b.svc.create({ workspaceId: 'ws' as never, additionalRoots: ['/kept', '/gone'] }))
+      .resolves.toEqual({ sessionId: 'born', rejectedAdditionalRoots: ['/gone'] })
+    expect(b.mock.remote.session.create)
+      .toHaveBeenCalledExactlyOnceWith({ workspaceId: 'ws', additionalRoots: ['/kept', '/gone'] })
+  })
+
+  it('lists the Session a failed additional-root edit still created', async ({ bench }) => {
+    const b = bench()
+    b.mock.remote.session.create.mockResolvedValue(err(new RemoteError(
+      'session/additional-roots-failed',
+      'grant failed',
+      { sessionId: sid('rootless') },
+    )))
+    const failure = await b.svc.create({ workspaceId: 'ws' as never, additionalRoots: ['/extra'] })
+      .catch((error: unknown) => error)
+    await Promise.resolve()
+    expect(failure).toMatchObject({ rpcError: { code: 'session/additional-roots-failed' } })
+    expect(b.svc.list.getSnapshot().byId[sid('rootless')]).toMatchObject({ id: 'rootless', blank: true })
   })
 })
 

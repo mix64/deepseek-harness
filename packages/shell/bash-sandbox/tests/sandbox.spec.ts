@@ -99,7 +99,7 @@ function runResult(exitCode: number | null, stderr: string): ShellRunResult {
 }
 
 function executionPolicy(mode: SandboxMode, workspaceRoot = resolve(process.cwd())): SandboxExecutionPolicy {
-  return { mode, workspaceRoot }
+  return { mode, workspaceRoot, additionalRoots: [] }
 }
 
 describe('the provider hand-off', () => {
@@ -257,7 +257,7 @@ describe('the provider hand-off', () => {
     const { bash, calls } = await setup({ mode: 'workspace-write' })
     const result = await run(bash, bash.resolve({ command: 'true' }))
     expect(result.sandbox).toEqual({ mode: 'workspace-write', denied: false, enforcement: 'full' })
-    expect(calls[0]?.policy).toEqual({ mode: 'workspace-write', workspaceRoot: resolve(process.cwd()) })
+    expect(calls[0]?.policy).toEqual({ mode: 'workspace-write', workspaceRoot: resolve(process.cwd()), additionalRoots: [] })
   })
 
   it('an explicit workspaceRoot on the policy wins', async () => {

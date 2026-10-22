@@ -31,7 +31,7 @@ function fixture(overrides: Partial<Config> = {}) {
   const ctx = new Context()
   roots.push(ctx)
   const effects = vi.spyOn(ctx.fiber, 'effect')
-  const sandboxPolicy = { defaultMode: 'danger-full-access', workspaceRoot: '/workspace', resolve: vi.fn((): SandboxExecutionPolicy => ({ mode: 'danger-full-access', workspaceRoot: '/workspace' })) }
+  const sandboxPolicy = { defaultMode: 'danger-full-access', workspaceRoot: '/workspace', resolve: vi.fn((): SandboxExecutionPolicy => ({ mode: 'danger-full-access', workspaceRoot: '/workspace', additionalRoots: [] })) }
   const workingDirectory = {
     get: vi.fn<(session: Agent['session']) => string>(session => session.header.cwd ?? '/workspace'),
     ensure: vi.fn<(agent: Agent, signal?: AbortSignal) => Promise<string>>(async agent => agent.session.header.cwd ?? '/workspace'),
@@ -109,7 +109,7 @@ describe('TerminalController', () => {
 
   it('uses the current directory for new user terminals while retaining earlier directories and permissions', async () => {
     const { ctx, controller, agent, subprocess, sandboxPolicy, workingDirectory } = fixture()
-    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: '/workspace', sessionId: agent.id }
+    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: '/workspace', additionalRoots: [], sessionId: agent.id }
     sandboxPolicy.resolve.mockReturnValue(policy)
     const confine = vi.fn(async (argv: readonly string[], _policy: SandboxExecutionPolicy) => ({ argv: [...argv] }))
     ctx.provide('sandbox', { confine } as never)
@@ -363,7 +363,7 @@ describe('TerminalController', () => {
 
   it.each(['read-only', 'workspace-write', 'danger-full-access'] as const)('starts a user shell without confinement under %s Agent permissions', async (mode) => {
     const { controller, agent, ctx, sandboxPolicy, subprocess } = fixture()
-    sandboxPolicy.resolve.mockReturnValue({ mode, workspaceRoot: '/workspace', sessionId: agent.id })
+    sandboxPolicy.resolve.mockReturnValue({ mode, workspaceRoot: '/workspace', additionalRoots: [], sessionId: agent.id })
     const confine = vi.fn((argv: readonly string[]) => ({ argv: ['sandbox-runner', ...argv] }))
     ctx.provide('sandbox', { confine } as never)
     await controller.create(agent, request, signal())

@@ -1,6 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import Sessions, { SessionId } from '@deepseek-ai/dsh-session'
 import SandboxPolicy, { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import type { AdditionalRoot } from '@deepseek-ai/dsh-sandbox-policy'
 import SessionProjections from '@deepseek-ai/dsh-session-projection'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { PolicyProcesses } from '../src/policy-processes.ts'
@@ -50,7 +51,7 @@ it('uses the standing policy for a temporary escalation and ignores detached res
   setSandboxMode(session, 'workspace-write')
   expect(release).not.toHaveBeenCalled()
   detach()
-  processes.register({ mode: 'read-only', workspaceRoot: policy.workspaceRoot }, release)()
+  processes.register({ mode: 'read-only', workspaceRoot: policy.workspaceRoot, additionalRoots: [] }, release)()
   setSandboxMode(session, 'read-only')
   await processes.wait(undefined)
   expect(release).not.toHaveBeenCalled()
@@ -92,7 +93,18 @@ it('cleans an explicit policy resource without a mounted Session store', async (
   onTestFinished(async () => { await ctx.fiber.dispose() })
   const processes = new PolicyProcesses(ctx)
   const release = vi.fn(async () => {})
-  processes.register({ sessionId: SessionId('external'), mode: 'read-only', workspaceRoot: process.cwd() }, release)
+  processes.register({ sessionId: SessionId('external'), mode: 'read-only', workspaceRoot: process.cwd(), additionalRoots: [] }, release)
   await ctx.fiber.dispose()
   expect(release).toHaveBeenCalledTimes(1)
+})
+
+it('releases a process when the additional roots change, not when the same list is logged again', async () => {
+  const { session, processes, policy } = await setup()
+  const release = vi.fn(async () => {})
+  processes.register(policy, release)
+  session.append('sandbox/additional-roots', { roots: [] })
+  expect(release).not.toHaveBeenCalled()
+  session.append('sandbox/additional-roots', { roots: ['/extra' as AdditionalRoot] })
+  expect(release).toHaveBeenCalledTimes(1)
+  await processes.wait(session.id)
 })

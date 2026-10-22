@@ -52,6 +52,12 @@
     },
     {
       "path": "../ui-settings/tsconfig.client.json"
+    },
+    {
+      "path": "../ui-workspace"
+    },
+    {
+      "path": "../../sandbox/sandbox-policy"
     }
   ]
 }

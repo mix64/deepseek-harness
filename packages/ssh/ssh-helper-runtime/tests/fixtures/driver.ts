@@ -47,7 +47,7 @@ try {
   for await (const part of await ctx.fs.streamText(target)) streamed += part
   assert.equal(streamed, 'second\n你好\n')
   assert((await ctx.fs.listDir(await ctx.fs.resolve(root))).some(entry => entry.name === 'sample.txt'))
-  await assert.rejects(ctx.fs.writeText(target, 'denied', undefined, undefined, { mode: 'read-only', workspaceRoot: root }))
+  await assert.rejects(ctx.fs.writeText(target, 'denied', undefined, undefined, { mode: 'read-only', workspaceRoot: root, additionalRoots: [] }))
   checks.push('guarded-files-and-streams')
 
   const options = { cwd: root, graceMs: 1000, stdio: { stdin: 'ignore', stdout: { maxBytes: 65_536 }, stderr: { maxBytes: 65_536 } } } as const
@@ -92,7 +92,7 @@ try {
 
   const runtime = ctx.ptcRuntime
   const bindings = [{ global: 'tools', functions: { echo: async (input: unknown) => String(input) } }]
-  const policy = { mode: 'danger-full-access', workspaceRoot: root } as const
+  const policy = { mode: 'danger-full-access', workspaceRoot: root, additionalRoots: [] } as const
   const result = await runtime.run(runtime.resolve({
     program: 'const fs=await import("node:fs/promises"); await fs.writeFile("ptc.txt","embedded"); console.log("worker-output"); return {value:await tools.echo("bridge"),env:Object.keys(process.env),executable:process.execPath,cwd:process.cwd()};',
     bindings, cwd: root, sandboxPolicy: policy,
@@ -115,23 +115,23 @@ try {
   if (sandbox === 'required') {
     const runner = process.env.DSH_EXPECT_SANDBOX_RUNNER
     if (runner !== undefined) {
-      const invocation = await ctx.sandbox.confine(['/bin/sh', '-c', 'true'], { mode: 'read-only', workspaceRoot: root })
+      const invocation = await ctx.sandbox.confine(['/bin/sh', '-c', 'true'], { mode: 'read-only', workspaceRoot: root, additionalRoots: [] })
       assert.equal(basename(invocation.argv[0]!), runner)
     }
     const confined = await runtime.run(runtime.resolve({
       program: 'return await (await import("node:fs/promises")).readFile("ptc.txt","utf8")', bindings: [], cwd: root,
-      sandboxPolicy: { mode: 'read-only', workspaceRoot: root },
+      sandboxPolicy: { mode: 'read-only', workspaceRoot: root, additionalRoots: [] },
     }))
     assert.equal(confined.error, undefined, JSON.stringify(confined))
     assert.equal(confined.value, 'embedded')
     const denied = await runtime.run(runtime.resolve({
       program: 'await(await import("node:fs/promises")).writeFile("forbidden.txt","bad")', bindings: [], cwd: root,
-      sandboxPolicy: { mode: 'read-only', workspaceRoot: root },
+      sandboxPolicy: { mode: 'read-only', workspaceRoot: root, additionalRoots: [] },
     }))
     assert.equal(denied.sandbox?.denied, true, JSON.stringify(denied))
     checks.push('sandbox-enforcement')
   } else if (sandbox === 'unavailable') {
-    await assert.rejects(ctx.sandbox.confine(['/bin/sh', '-c', 'true'], { mode: 'read-only', workspaceRoot: root }), /sandbox|runner/i)
+    await assert.rejects(ctx.sandbox.confine(['/bin/sh', '-c', 'true'], { mode: 'read-only', workspaceRoot: root, additionalRoots: [] }), /sandbox|runner/i)
     checks.push('sandbox-unavailable-refusal')
   }
   await writeFile(reportPath, `${JSON.stringify({ checks, platform: hello.platform, nodeVersion: hello.nodeVersion, sandboxLane: sandbox }, null, 2)}\n`)

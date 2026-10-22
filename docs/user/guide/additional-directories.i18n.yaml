@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for additional-directories.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/user/guide/additional-directories.md
+/write-outside-the-workspace:
+  en: 87ae076093949d6e
+  zh: f76db7818e69cb83
+/write-outside-the-workspace/summary:
+  en: f9374b9eac7f8beb
+  zh: 50881dbb7fea23fb
+/write-outside-the-workspace/add-a-directory:
+  en: 8f258e19c0db300c
+  zh: 93e06a4989eca6d7
+/write-outside-the-workspace/use-slash-commands:
+  en: 94214dc0f3a63924
+  zh: 0b9d82b7587f8b21
+/write-outside-the-workspace/what-cannot-be-added:
+  en: 894d9188c1455f7f
+  zh: ae67faffd8d82320
+/write-outside-the-workspace/new-sessions-and-subagents:
+  en: a7ff6f12054dd7ed
+  zh: 25a842965a3b65fa
+/write-outside-the-workspace/remove-a-directory:
+  en: a62d2ac30f25fd20
+  zh: 365e763c09406e8d

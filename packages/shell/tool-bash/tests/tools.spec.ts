@@ -148,7 +148,7 @@ class RecordingSandboxExecutor extends ShellExecutor {
       timeoutMs: request.timeoutMs ?? 1000,
       onExpiry: request.onExpiry ?? 'kill',
       ...request.signal ? { signal: request.signal } : {},
-      sandboxPolicy: request.sandboxPolicy ?? { mode: 'read-only', workspaceRoot: process.cwd() },
+      sandboxPolicy: request.sandboxPolicy ?? { mode: 'read-only', workspaceRoot: process.cwd(), additionalRoots: [] },
     }
   }
 

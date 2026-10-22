@@ -50,9 +50,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('AclSandbox write restriction', ()
     // The direct API requires this explicit private temp directory and its
     // own SID; it never widens the grant over the ambient temp root.
     sandbox = new AclSandbox({
-      writableDirs: [writableDir],
+      writable: [{ dir: writableDir, writeSid: 'S-1-4-9000-4' }],
       tempDir: isolatedTemp,
-      writeSid: 'S-1-4-9000-4',
       tempWriteSid: 'S-1-4-9000-4-1',
       mode: 'workspace-write',
     })
@@ -95,12 +94,12 @@ describe.skipIf(!isWin32 || !pwshAvailable())('AclSandbox write restriction', ()
   it('fails closed when the write SID cannot be parsed (no unrestricted fallback)', async () => {
     // A malformed SID makes ConvertStringSidToSidW fail; init must throw
     // before any grant is applied and never spawn unrestricted.
-    const broken = new AclSandbox({ writableDirs: [writableDir], tempDir: null, writeSid: 'S-1-4-abc-1', mode: 'workspace-write' })
+    const broken = new AclSandbox({ writable: [{ dir: writableDir, writeSid: 'S-1-4-abc-1' }], tempDir: null, mode: 'workspace-write' })
     await expect(broken.init()).rejects.toThrow(/ConvertStringSidToSidW/u)
   }, 15_000)
 
   it('failed init clears provisional temp state before a retry', async () => {
-    const broken = new AclSandbox({ writableDirs: [writableDir], tempDir: null, writeSid: 'S-1-4-abc-1', mode: 'workspace-write' })
+    const broken = new AclSandbox({ writable: [{ dir: writableDir, writeSid: 'S-1-4-abc-1' }], tempDir: null, mode: 'workspace-write' })
     const provisionalState = broken as unknown as { tempDirResolved: string | undefined }
     provisionalState.tempDirResolved = isolatedTemp
 

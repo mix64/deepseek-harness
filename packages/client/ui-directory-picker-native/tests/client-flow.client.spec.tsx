@@ -29,6 +29,7 @@ vi.mock('../../../../apps/desktop/src/preload-mandatory-overlay.ts', () => ({ in
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); desktopIpc.invoke.mockReset(); desktopIpc.on.mockReset() })
 
 const HOLES = ['conversation.hero.workspace.directoryFlow', 'sidebar.workspaces.directoryFlow'] as const
+const COMPOSER_HOLE = 'conversation.input.directories.directoryFlow'
 
 async function bench(allows: (action: string) => boolean = () => true) {
   const ctx = new Context()
@@ -37,9 +38,9 @@ async function bench(allows: (action: string) => boolean = () => true) {
   const pickDirectory = vi.fn(async (): Promise<string | null> => '/tmp/picked')
   ctx.provide('uiWorkspace', { pickDirectory } as never)
   const slots = ctx.get('slots') as SlotRegistry
-  const declare = () => slots.register({
+  const declare = (holes: readonly string[] = HOLES) => slots.register({
     name: 'root',
-    children: Object.fromEntries(HOLES.map(name => [name, { kind: 'single', scope: 'root' }])),
+    children: Object.fromEntries(holes.map(name => [name, { kind: 'single', scope: 'root' }])),
   } as never, () => null)
   return { ctx, slots, pickDirectory, declare }
 }
@@ -94,6 +95,17 @@ describe('directory-picker-native client half', () => {
     const duplicate = b.ctx.plugin({ inject: [...inject], apply })
     await expect(duplicate.await()).rejects.toThrow(/already has a registration/)
     for (const hole of HOLES) expect(b.slots.entries(hole)).toHaveLength(1)
+  })
+
+  it('fills the composer directories hole without the Workspace pair, and leaves with its fiber', async () => {
+    const b = await bench()
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    b.declare([COMPOSER_HOLE])
+    await Promise.resolve()
+    expect(b.slots.entries(COMPOSER_HOLE)).toHaveLength(1)
+    await fiber.dispose()
+    expect(b.slots.entries(COMPOSER_HOLE)).toHaveLength(0)
   })
 
   it('rolls back wholesale and reports loudly when a rival injection wins declaration activation', async () => {

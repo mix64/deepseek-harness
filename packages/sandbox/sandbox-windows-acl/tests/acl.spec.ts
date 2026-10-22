@@ -367,8 +367,8 @@ describe.skipIf(!isWin32)('ACL editing', () => {
   it('interleaved sandbox instances: A.init → B.init → A.dispose → B.dispose leaves BOTH standing workspace ACEs (the per-workspace reuse cache)', async () => {
     const api = await win32()
     const dir = scratch()
-    const sandboxA = new AclSandbox({ writableDirs: [dir], tempDir: null, writeSid: 'S-1-4-9000-1', mode: 'workspace-write' })
-    const sandboxB = new AclSandbox({ writableDirs: [dir], tempDir: null, writeSid: 'S-1-4-9000-2', mode: 'workspace-write' })
+    const sandboxA = new AclSandbox({ writable: [{ dir, writeSid: 'S-1-4-9000-1' }], tempDir: null, mode: 'workspace-write' })
+    const sandboxB = new AclSandbox({ writable: [{ dir, writeSid: 'S-1-4-9000-2' }], tempDir: null, mode: 'workspace-write' })
     await sandboxA.init()
     await sandboxB.init()
     // Workspace ACEs are STANDING: dispose frees the instance's SID
@@ -386,9 +386,8 @@ describe.skipIf(!isWin32)('ACL editing', () => {
     const workspaceDir = scratch()
     const tempDir = scratch()
     const sandbox = new AclSandbox({
-      writableDirs: [workspaceDir],
+      writable: [{ dir: workspaceDir, writeSid: 'S-1-4-9000-3' }],
       tempDir,
-      writeSid: 'S-1-4-9000-3',
       tempWriteSid: 'S-1-4-9000-3-1',
       mode: 'workspace-write',
     })
@@ -411,9 +410,8 @@ describe.skipIf(!isWin32)('ACL editing', () => {
     const privateTempSid = 'S-1-4-9000-30-1'
     mkdirSync(nestedTemp)
     const sandbox = new AclSandbox({
-      writableDirs: [workspaceDir],
+      writable: [{ dir: workspaceDir, writeSid }],
       tempDir: nestedTemp,
-      writeSid,
       tempWriteSid: privateTempSid,
       mode: 'workspace-write',
     })
@@ -424,18 +422,17 @@ describe.skipIf(!isWin32)('ACL editing', () => {
     expect(readDirectAces(api, nestedTemp).some(ace => ace.sid === privateTempSid)).toBe(false)
   })
 
-  it('workspace-write without a write SID fails at construction; the token layer guards the same contract', () => {
+  it('workspace-write without a writable root fails at construction; the token layer guards the same contract', () => {
     const dir = scratch()
-    expect(() => new AclSandbox({ writableDirs: [dir], tempDir: null, mode: 'workspace-write' }))
-      .toThrow(/requires a write SID/)
-    expect(() => new AclSandbox({ writableDirs: [dir], writeSid: 'S-1-4-1-1', mode: 'workspace-write' }))
+    expect(() => new AclSandbox({ writable: [], tempDir: null, mode: 'workspace-write' }))
+      .toThrow(/requires at least one writable directory/)
+    expect(() => new AclSandbox({ writable: [{ dir, writeSid: 'S-1-4-1-1' }], mode: 'workspace-write' }))
       .toThrow(/requires an explicit private temp directory or null/)
-    expect(() => new AclSandbox({ writableDirs: [dir], tempDir: dir, writeSid: 'S-1-4-1-1', mode: 'workspace-write' }))
+    expect(() => new AclSandbox({ writable: [{ dir, writeSid: 'S-1-4-1-1' }], tempDir: dir, mode: 'workspace-write' }))
       .toThrow(/requires a temp write SID/)
     expect(() => new AclSandbox({
-      writableDirs: [dir],
+      writable: [{ dir, writeSid: 'S-1-4-1-1' }],
       tempDir: dir,
-      writeSid: 'S-1-4-1-1',
       tempWriteSid: 'S-1-4-1-1',
       mode: 'workspace-write',
     })).toThrow(/must be distinct/)
@@ -497,7 +494,7 @@ describe.skipIf(!isWin32)('ACL editing', () => {
   it('the applied grant mask carries DELETE and FILE_DELETE_CHILD (never WRITE_DAC/WRITE_OWNER)', async () => {
     const api = await win32()
     const dir = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [dir], tempDir: null, writeSid: 'S-1-4-1234-5', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir, writeSid: 'S-1-4-1234-5' }], tempDir: null, mode: 'workspace-write' })
     try {
       await sandbox.init()
       const grant = readDirectAces(api, dir).find(ace => ace.sid === 'S-1-4-1234-5')

@@ -1,6 +1,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import Sessions, { SessionId } from '@deepseek-ai/dsh-session'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import SandboxPolicy, { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import type { AdditionalRoot } from '@deepseek-ai/dsh-sandbox-policy'
 import SessionProjections from '@deepseek-ai/dsh-session-projection'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { PtcCalls } from '../src/ptc-calls.ts'
@@ -14,26 +16,26 @@ async function setup() {
   await ctx.plugin(SandboxPolicy, { mode: 'workspace-write' })
   const session = ctx.sessions.create(SessionId('ptc-calls'))
   const calls = new PtcCalls(ctx)
-  const mode = () => ctx.sandboxPolicy.resolve({ session }).mode
+  const policy = () => ctx.sandboxPolicy.resolve({ session })
   const signal = new AbortController().signal
-  return { ctx, session, calls, mode, signal }
+  return { ctx, session, calls, policy, signal }
 }
 
 it('commits policy immediately, cancels existing calls, and waits for their complete cleanup before reading the latest mode', async () => {
-  const { ctx, session, calls, mode, signal } = await setup()
+  const { ctx, session, calls, policy, signal } = await setup()
   const cleanup = Promise.withResolvers<undefined>()
   let oldSignal: AbortSignal | undefined
-  const first = calls.run(session.id, signal, mode, async (current) => { oldSignal = current; await cleanup.promise })
-  const next = vi.fn(async () => mode())
+  const first = calls.run(session.id, signal, policy, async (current) => { oldSignal = current; await cleanup.promise })
+  const next = vi.fn(async () => policy().mode)
   try {
     session.append('turn/start', { turn: 1 })
     setSandboxMode(ctx.sessions.create(SessionId('another')), 'read-only')
     setSandboxMode(session, 'workspace-write')
     expect(oldSignal?.aborted).toBe(false)
     setSandboxMode(session, 'read-only')
-    expect(mode()).toBe('read-only')
+    expect(policy().mode).toBe('read-only')
     expect(oldSignal?.aborted).toBe(true)
-    const second = calls.run(session.id, signal, mode, next)
+    const second = calls.run(session.id, signal, policy, next)
     expect(next).not.toHaveBeenCalled()
     setSandboxMode(session, 'danger-full-access')
     cleanup.resolve(undefined)
@@ -43,23 +45,23 @@ it('commits policy immediately, cancels existing calls, and waits for their comp
 })
 
 it('releases failed calls and allows same-policy calls to overlap', async () => {
-  const { session, calls, mode, signal } = await setup()
+  const { session, calls, policy, signal } = await setup()
   const cleanup = Promise.withResolvers<undefined>()
-  const first = calls.run(session.id, signal, mode, () => cleanup.promise)
+  const first = calls.run(session.id, signal, policy, () => cleanup.promise)
   try {
-    await expect(calls.run(session.id, signal, mode, async () => { throw new Error('failed call') })).rejects.toThrow('failed call')
-    expect(await calls.run(session.id, signal, mode, async () => 'next')).toBe('next')
+    await expect(calls.run(session.id, signal, policy, async () => { throw new Error('failed call') })).rejects.toThrow('failed call')
+    expect(await calls.run(session.id, signal, policy, async () => 'next')).toBe('next')
   } finally { cleanup.resolve(undefined); await first }
 })
 
 it('honors cancellation while waiting for a canceled predecessor', async () => {
-  const { session, calls, mode, signal } = await setup()
+  const { session, calls, policy, signal } = await setup()
   const cleanup = Promise.withResolvers<undefined>()
-  const first = calls.run(session.id, signal, mode, () => cleanup.promise)
+  const first = calls.run(session.id, signal, policy, () => cleanup.promise)
   setSandboxMode(session, 'read-only')
   const controller = new AbortController()
   const next = vi.fn(async () => 'unexpected')
-  const second = calls.run(session.id, controller.signal, mode, next)
+  const second = calls.run(session.id, controller.signal, policy, next)
   const rejected = expect(second).rejects.toThrow('caller canceled')
   controller.abort(new Error('caller canceled'))
   cleanup.resolve(undefined)
@@ -69,23 +71,23 @@ it('honors cancellation while waiting for a canceled predecessor', async () => {
 })
 
 it('unloads the executor only after calls stop and refuses late admission', async () => {
-  const { ctx, session, calls, mode, signal } = await setup()
+  const { ctx, session, calls, policy, signal } = await setup()
   const cleanup = Promise.withResolvers<undefined>()
   const stopped = Promise.withResolvers<undefined>()
-  const first = calls.run(session.id, signal, mode, async (current) => {
+  const first = calls.run(session.id, signal, policy, async (current) => {
     current.addEventListener('abort', () => { stopped.resolve(undefined) }, { once: true })
     await cleanup.promise
   })
   const disposed = ctx.fiber.dispose()
   try {
     await stopped.promise
-    const next = calls.run(session.id, signal, mode, async () => 'unexpected')
+    const next = calls.run(session.id, signal, policy, async () => 'unexpected')
     const rejected = expect(next).rejects.toThrow('PTC tool executor disposed')
     cleanup.resolve(undefined)
     await first
     await rejected
     await disposed
-    await expect(calls.run(session.id, signal, mode, async () => 'unexpected')).rejects.toThrow('PTC tool executor disposed')
+    await expect(calls.run(session.id, signal, policy, async () => 'unexpected')).rejects.toThrow('PTC tool executor disposed')
   } finally { cleanup.resolve(undefined); await first; await disposed }
 })
 
@@ -119,36 +121,36 @@ it('resets from the host while a call is stuck and blocks admission until releas
 })
 
 it('waits for call cleanup after release fails and refuses code until an explicit reset retry succeeds', async () => {
-  const { session, calls, mode, signal } = await setup()
+  const { session, calls, policy, signal } = await setup()
   const cleanup = Promise.withResolvers<undefined>()
-  const first = calls.run(session.id, signal, mode, () => cleanup.promise)
+  const first = calls.run(session.id, signal, policy, () => cleanup.promise)
   const releaseFailed = Promise.withResolvers<undefined>()
   const reset = calls.reset(session.id, async () => { releaseFailed.resolve(undefined); throw new Error('release failed') })
   const rejection = expect(reset).rejects.toThrow('release failed')
   const nextBody = vi.fn(async () => 'unexpected')
-  const next = calls.run(session.id, signal, mode, nextBody)
+  const next = calls.run(session.id, signal, policy, nextBody)
   const nextRejection = expect(next).rejects.toThrow('release failed')
   try {
     await releaseFailed.promise
     expect(nextBody).not.toHaveBeenCalled()
     cleanup.resolve(undefined)
     await Promise.all([first, rejection, nextRejection])
-    await expect(calls.run(session.id, signal, mode, nextBody)).rejects.toThrow(CodeRunFailedError)
-    await expect(calls.run(session.id, signal, mode, nextBody)).rejects.toThrow('Ask the host to reset it before running more code')
+    await expect(calls.run(session.id, signal, policy, nextBody)).rejects.toThrow(CodeRunFailedError)
+    await expect(calls.run(session.id, signal, policy, nextBody)).rejects.toThrow('Ask the host to reset it before running more code')
     expect(nextBody).not.toHaveBeenCalled()
     await calls.reset(session.id, async () => {})
-    expect(await calls.run(session.id, signal, mode, async () => 'fresh')).toBe('fresh')
+    expect(await calls.run(session.id, signal, policy, async () => 'fresh')).toBe('fresh')
   } finally { cleanup.resolve(undefined); await Promise.allSettled([first, reset, next]) }
 })
 
 it('keeps admission blocked if the reset notice cannot be queued', async () => {
-  const { session, calls, mode, signal } = await setup()
+  const { session, calls, policy, signal } = await setup()
   await expect(calls.reset(session.id, async () => {}, () => { throw new Error('notice failed') })).rejects.toThrow('notice failed')
   const next = vi.fn(async () => 'fresh')
-  await expect(calls.run(session.id, signal, mode, next)).rejects.toThrow('Ask the host to reset it before running more code')
+  await expect(calls.run(session.id, signal, policy, next)).rejects.toThrow('Ask the host to reset it before running more code')
   expect(next).not.toHaveBeenCalled()
   await calls.reset(session.id, async () => {})
-  expect(await calls.run(session.id, signal, mode, next)).toBe('fresh')
+  expect(await calls.run(session.id, signal, policy, next)).toBe('fresh')
 })
 
 it('waits for an idle reset during executor disposal and refuses further resets', async () => {
@@ -171,17 +173,30 @@ it('waits for an idle reset during executor disposal and refuses further resets'
 
 
 it('waits for externally canceled calls to finish cleanup before admitting their successor', async () => {
-  const { session, calls, mode, signal } = await setup()
+  const { session, calls, policy, signal } = await setup()
   const controller = new AbortController()
   const cleanup: PromiseWithResolvers<void> = Promise.withResolvers()
-  const first = calls.run(session.id, controller.signal, mode, () => cleanup.promise)
+  const first = calls.run(session.id, controller.signal, policy, () => cleanup.promise)
   controller.abort(new Error('caller canceled'))
   const next = vi.fn(async () => 'next')
-  const second = calls.run(session.id, signal, mode, next)
+  const second = calls.run(session.id, signal, policy, next)
   try {
     expect(next).not.toHaveBeenCalled()
     cleanup.resolve()
     await first
     expect(await second).toBe('next')
   } finally { cleanup.resolve(); await Promise.all([first, second]) }
+})
+
+it('cancels calls when the additional roots change and keeps them for an unchanged list', async () => {
+  const { session, calls, policy, signal } = await setup()
+  const cleanup = Promise.withResolvers<undefined>()
+  let current: AbortSignal | undefined
+  const first = calls.run(session.id, signal, policy, async (callSignal) => { current = callSignal; await cleanup.promise })
+  try {
+    session.append('sandbox/additional-roots', { roots: [] })
+    expect(current?.aborted).toBe(false)
+    session.append('sandbox/additional-roots', { roots: [brandString<AdditionalRoot>('/extra')] })
+    expect(current?.aborted).toBe(true)
+  } finally { cleanup.resolve(undefined); await first }
 })

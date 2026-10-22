@@ -5,6 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { PtcProgramFormat, PtcRunRequest, PtcRunResult, PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { clampTimeout } from '@deepseek-ai/dsh-timeout'
+import { sameSandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { ResolvedConfig } from './config.ts'
 import { validateBindings } from './bindings.ts'
 import type { PolicyProcesses } from './policy-processes.ts'
@@ -90,10 +91,7 @@ class NodeExecution {
     const owner = this.mode.retainsState ? spec.stateOwner : undefined
     let worker = owner === undefined ? undefined : this.owners.get(owner)
     worker?.assertIdle()
-    if (worker && !worker.closed && (worker.policy.mode !== spec.sandboxPolicy.mode
-      || worker.policy.workspaceRoot !== spec.sandboxPolicy.workspaceRoot
-      || worker.policy.sessionId !== spec.sandboxPolicy.sessionId
-      || !sameAdditionalRoots(worker.policy.additionalWritableRoots, spec.sandboxPolicy.additionalWritableRoots))) {
+    if (worker && !worker.closed && !sameSandboxPolicy(worker.policy, spec.sandboxPolicy)) {
       throw new Error('persistent PTC: release the retained environment before changing its sandbox policy')
     }
     if (!worker || worker.closed) {
@@ -125,19 +123,6 @@ class NodeExecution {
     if (this.owners.get(owner) === worker) this.owners.delete(owner)
     this.workers.delete(worker)
   }
-}
-
-/**
- * Compare requested extra grants without resolving paths in another execution world.
- * @param left - one policy's additional roots.
- * @param right - the other policy's additional roots.
- * @returns whether both contain the same paths, ignoring order and duplicates.
- */
-function sameAdditionalRoots(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
-  const effective = (roots: readonly string[] | undefined): string[] => [...new Set(roots ?? [])].sort()
-  const a = effective(left)
-  const b = effective(right)
-  return a.length === b.length && a.every((root, index) => root === b[index])
 }
 
 const STRIP_PREFIX = 'async function __dsh_program__() {\n'

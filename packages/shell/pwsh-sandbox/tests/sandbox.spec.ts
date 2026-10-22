@@ -178,7 +178,7 @@ describe('SandboxPwshExecutor asynchronous confinement', () => {
   })
 
   it('reports synchronous subprocess spawn errors through the prepared handle result', async () => {
-    const RO: SandboxPolicy = { mode: 'read-only', workspaceRoot: spillDir }
+    const RO: SandboxPolicy = { mode: 'read-only', workspaceRoot: spillDir, additionalRoots: [] }
     const contexts: Context[] = []
     try {
       const attributable = Object.assign(new Error('sync-enoent-start'), { code: 'ENOENT', syscall: 'spawn node', path: 'node' })
@@ -265,7 +265,7 @@ describe.skipIf(!pwshAvailable())('SandboxPwshExecutor', () => {
     rmSync(spillDir, { recursive: true, force: true })
   })
 
-  const RO: SandboxExecutionPolicy = { mode: 'read-only', workspaceRoot: '/ws' }
+  const RO: SandboxExecutionPolicy = { mode: 'read-only', workspaceRoot: '/ws', additionalRoots: [] }
 
   it('wraps the exact pwsh argv through ctx.sandbox with the per-call policy', async () => {
     const { executor, calls } = await setup()
@@ -291,7 +291,7 @@ describe.skipIf(!pwshAvailable())('SandboxPwshExecutor', () => {
 
   it('danger-full-access bypasses confine entirely and stamps full-access facts', async () => {
     const { executor, calls } = await setup()
-    const result = await run(executor, executor.resolve({ command: 'echo full', sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: '/ws' } }))
+    const result = await run(executor, executor.resolve({ command: 'echo full', sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: '/ws', additionalRoots: [] } }))
     expect(result.exitCode).toBe(0)
     expect(calls).toHaveLength(0)
     expect(result.sandbox).toEqual({ mode: 'danger-full-access', denied: false })
@@ -424,7 +424,7 @@ describe.skipIf(!pwshAvailable())('SandboxPwshExecutor', () => {
     const { executor, calls } = await setup()
     const proc = (await start(executor, executor.resolve({
       command: 'echo full-bg',
-      sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: '/ws' },
+      sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: '/ws', additionalRoots: [] },
     })))
     await proc.done
     expect(calls).toHaveLength(0)

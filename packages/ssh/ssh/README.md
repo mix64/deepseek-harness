@@ -47,7 +47,7 @@ Install an [SSH helper executable archive](../ssh-helper-runtime/README.md), or 
 | `maxPending` | `128` | Ordinary outstanding requests; heartbeat and bounded cleanup requests have reserved capacity |
 | `leaseMs` | `30000` | Helper heartbeat lease, from 3000 to 600000 ms |
 
-Pass the verified `ctx.ssh.ptcLaunch` as the `launch` configuration of [`NodePtcRuntime`](../../ptc-runtime/ptc-runtime-node/README.md). Executable deployments include their worker. Script deployments require both bootstrap fields for PTC; filesystem and Bash use may omit them. The getter refuses an unconfigured script bootstrap. The client rejects mismatched protocol versions, runtime kinds and helper digests before readiness.
+Pass the verified `ctx.ssh.ptcLaunch` as the `launch` configuration of [`NodePtcRuntime`](../../ptc-runtime/ptc-runtime-node/README.md). Executable deployments include their worker. Script deployments require both bootstrap fields for PTC; filesystem and Bash use may omit them. The getter refuses an unconfigured script bootstrap. The client rejects mismatched protocol versions, runtime kinds and helper digests before readiness. Protocol version 4 carries each sandbox policy's ordered `additionalRoots` beside its main root, so the installed helper must be upgraded together with the client; the helper resolves the main root in the remote filesystem, and the remote sandbox backend canonicalizes and filters the additional roots where the files exist.
 
 -----
 

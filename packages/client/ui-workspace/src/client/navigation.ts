@@ -5,14 +5,18 @@ import type { AccessEffect, RemoteEndpoint } from '@deepseek-ai/dsh-api-remote-a
 import type { ClientRemote, DirectoryListing, RemoteFailure } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   ISessions,
+  SessionCreated,
   SessionCreateError,
   SessionBinding,
   SessionReference,
   SessionTarget,
   SessionListState,
+  SessionProjectionMap,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only: pulls the `agentPreset` Session projection value into this program.
 import type {} from '@deepseek-ai/dsh-agent-preset-registry/types'
+// Type-only: pulls the `sandboxRoots` Session projection value into this program.
+import type {} from '@deepseek-ai/dsh-sandbox-policy/client'
 import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
@@ -83,7 +87,9 @@ export interface UiWorkspace {
   /**
    * Open the Workspace blank `connectWorkspace` resolves, so New Session returns to that blank's
    * unsent draft. A creation the Host refuses is shown through the Workspace notice and leaves the
-   * selection as it was.
+   * selection as it was. A Session started in the current Session's Workspace starts with the
+   * current Session's additional writable directories; directories the Host does not carry over
+   * are named in a Workspace notice.
    * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
    * @param options - initial content, the blank's preset, and `whenDraftExists`, which decides
    * whether existing text or attachments are kept, replaced, or followed by the prompt.
@@ -176,9 +182,10 @@ export class DirectoryBrowseError extends Error {
 
 /** Implements Workspace archive and directory UI operations. */
 class UiWorkspaceService extends Service implements UiWorkspace {
-  /** The latest in-flight connection per Workspace; a request joins it only when both name the same preset. */
+  /** The latest in-flight connection per Workspace; a request joins it only when both name the same preset and roots. */
   private readonly connecting = new Map<WorkspaceId, {
     readonly agentPreset: string | undefined
+    readonly additionalRoots: readonly string[]
     readonly attempt: Promise<SessionId>
   }>()
   private readonly lifetime = new AbortController()
@@ -225,10 +232,12 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
   /**
    * @param reuse - preset for the reused or created blank.
+   * @param additionalRoots - additional writable directories the Session starts with.
    */
   private async connectBlank(
     workspaceId: WorkspaceId,
     reuse: Pick<StartSessionOptions, 'agentPreset'>,
+    additionalRoots: readonly string[] = [],
   ): Promise<SessionId> {
     const workspace = this.workspaces.list.getSnapshot().items
       .find(item => item.workspaceId === workspaceId)
@@ -236,17 +245,22 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       throw new Error(`uiWorkspace.connectWorkspace: unknown workspace ${workspaceId}`)
     }
     const inflight = this.connecting.get(workspaceId)
-    if (inflight !== undefined && inflight.agentPreset === reuse.agentPreset) return inflight.attempt
+    if (inflight !== undefined && inflight.agentPreset === reuse.agentPreset
+      && sameRoots(inflight.additionalRoots, additionalRoots)) return inflight.attempt
 
-    const attempt = this.createInWorkspace(workspace, reuse).finally(() => {
+    const attempt = this.createInWorkspace(workspace, reuse, additionalRoots).finally(() => {
       if (this.connecting.get(workspaceId)?.attempt === attempt) this.connecting.delete(workspaceId)
     })
-    this.connecting.set(workspaceId, { agentPreset: reuse.agentPreset, attempt })
+    this.connecting.set(workspaceId, { agentPreset: reuse.agentPreset, additionalRoots, attempt })
     return attempt
   }
 
   /** Name the first reusable member blank; a requested preset also skips blanks listing another preset. */
-  private createInWorkspace(workspace: WorkspaceView, options: Pick<StartSessionOptions, 'agentPreset'>): Promise<SessionId> {
+  private createInWorkspace(
+    workspace: WorkspaceView,
+    options: Pick<StartSessionOptions, 'agentPreset'>,
+    additionalRoots: readonly string[],
+  ): Promise<SessionId> {
     const archived = this.workspaces.list.getSnapshot().archivedSessionIds
     const sessions = this.sessions.list.getSnapshot()
     const blank = sessions.ids.find((id) => {
@@ -260,20 +274,33 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       workspaceId: workspace.workspaceId,
       ...(blank === undefined ? {} : { sessionId: blank }),
       ...(options.agentPreset === undefined ? {} : { agentPreset: options.agentPreset }),
-    })
+    }, additionalRoots)
   }
 
   /**
    * Create through the Host. A named blank the Host declined may still read as
    * blank from stale cached list metadata, which hides it from the Session tree;
-   * its projections are reloaded so the row reflects its log.
+   * its projections are reloaded so the row reflects its log. Requested
+   * additional roots the Host refused, or could not apply to the Session it
+   * created, are named in a Workspace notice; the Session itself still opens.
    */
   private async createNamed(request: {
     readonly workspaceId: WorkspaceId
     readonly sessionId?: SessionId
     readonly agentPreset?: string
-  }): Promise<SessionId> {
-    const sessionId = await this.sessions.create(request)
+  }, additionalRoots: readonly string[] = []): Promise<SessionId> {
+    let created: SessionCreated
+    try {
+      created = await this.sessions.create(additionalRoots.length === 0 ? request : { ...request, additionalRoots })
+    } catch (error: unknown) {
+      const refused = sessionCreateErrorOf(error)?.rpcError
+      if (refused?.code !== 'session/additional-roots-failed') throw error
+      created = { sessionId: refused.details.sessionId, rejectedAdditionalRoots: additionalRoots }
+    }
+    if (created.rejectedAdditionalRoots.length > 0) {
+      this.notify({ kind: 'rootsNotCarried', paths: created.rejectedAdditionalRoots })
+    }
+    const sessionId = created.sessionId
     const named = request.sessionId
     if (named !== undefined && named !== sessionId) {
       void this.sessions.refreshProjections(named).catch((reason: unknown) => {
@@ -292,15 +319,18 @@ class UiWorkspaceService extends Service implements UiWorkspace {
    */
   private async restoreBlank(workspaceId: WorkspaceId, sessionId: SessionId): Promise<SessionId> {
     await this.sessions.refreshProjections(sessionId)
-    const recorded = this.sessions.list.getSnapshot().byId[sessionId]?.projectionValues?.agentPreset
+    const values = this.sessions.list.getSnapshot().byId[sessionId]?.projectionValues
+    const recorded = values?.agentPreset
+    // Reopening replaces the blank's additional roots, so its own list is requested again.
+    const roots = values?.sandboxRoots?.roots ?? []
     const request = { workspaceId, sessionId }
-    if (typeof recorded !== 'string') return this.createNamed(request)
+    if (typeof recorded !== 'string') return this.createNamed(request, roots)
     try {
-      return await this.createNamed({ ...request, agentPreset: recorded })
+      return await this.createNamed({ ...request, agentPreset: recorded }, roots)
     } catch (error: unknown) {
       const code = sessionCreateErrorOf(error)?.rpcError.code
       if (code !== 'agent-preset/not-found' && code !== 'agent-preset/invalid') throw error
-      return this.createNamed(request)
+      return this.createNamed(request, roots)
     }
   }
 
@@ -311,20 +341,22 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   openWorkspace(
     workspaceId: WorkspaceId,
     beforeOpen?: (sessionId: SessionId) => void,
-    options: Pick<StartSessionOptions, 'agentPreset'> = {},
+    options: Pick<StartSessionOptions, 'agentPreset'> & { readonly additionalRoots?: readonly string[] } = {},
   ): Promise<void> {
-    return this.openWorkspaceSession(workspaceId, beforeOpen, options)
+    const { additionalRoots, ...reuse } = options
+    return this.openWorkspaceSession(workspaceId, beforeOpen, reuse, additionalRoots)
   }
 
   private async openWorkspaceSession(
     workspaceId: WorkspaceId,
     beforeOpen: ((sessionId: SessionId) => void) | undefined,
     reuse: Pick<StartSessionOptions, 'agentPreset'>,
+    additionalRoots: readonly string[] = [],
   ): Promise<void> {
     const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
     let sessionId: SessionId
     try {
-      sessionId = await this.connectBlank(workspaceId, reuse)
+      sessionId = await this.connectBlank(workspaceId, reuse, additionalRoots)
     } catch (error: unknown) {
       // Reported here, not in connectWorkspace: startup restoration calls that
       // directly and stays console-only.
@@ -370,7 +402,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       && !archivedSessionIds.includes(id) && !items.some(item => item.sessionIds.includes(id)))
     if (reusable !== undefined) return reusable
     const cwd = await this.workspaces.noFolderDirectory(signal)
-    const sessionId = await this.sessions.create({ cwd })
+    const { sessionId } = await this.sessions.create({ cwd })
     this.noFolderSessions.set([...this.noFolderSessions.getSnapshot(), sessionId])
     return sessionId
   }
@@ -394,6 +426,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       ? recentWorkspace(workspace.items, sessions.byId)
       : undefined
     const target = workspaceId ?? currentWorkspaceId ?? recent
+    const additionalRoots = target !== undefined && target === currentWorkspaceId ? this.currentAdditionalRoots() : []
     if (target === undefined) {
       if (initializeDraft) {
         this.notify({ kind: 'createFailed', message: this.ctx.locale.bind('workspace')('draft.workspaceRequired') })
@@ -406,10 +439,17 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       const binding = this.sessions.binding(id)
       if (binding === undefined) this.draftPreparationFailed()
       this.prepareDraft(binding, draftOptions)
-    } : undefined, agentPreset === undefined ? {} : { agentPreset })
+    } : undefined, { ...agentPreset === undefined ? {} : { agentPreset }, additionalRoots })
     void opening.catch(
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )
+  }
+
+  /** The current Session's additional writable directories; none before its projection arrives. */
+  private currentAdditionalRoots(): readonly string[] {
+    const view = this.mainReference?.binding.session.projections.faceOf('sandboxRoots')
+      .getSnapshot() as SessionProjectionMap['sandboxRoots'] | undefined
+    return view?.roots ?? []
   }
 
   private prepareDraft(binding: SessionBinding, options: DraftInitializationOptions): void {
@@ -616,6 +656,11 @@ function creationFailureMessage(error: unknown): string {
   const refused = sessionCreateErrorOf(error)
   if (refused !== undefined) return `${refused.rpcError.code}: ${refused.rpcError.message}`
   return error instanceof Error ? error.message : String(error)
+}
+
+/** Whether two additional-root lists name the same roots in the same order. */
+function sameRoots(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((root, index) => root === b[index])
 }
 
 /** Stable tie-breaking follows Host Workspace order. */

@@ -9,7 +9,9 @@ import { workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 
 /**
- * Build the bwrap profile arguments for one file-effect policy.
+ * Build the bwrap profile arguments for one file-effect policy. Under
+ * `workspace-write` every {@link workspaceRoots} entry is bound read-write at
+ * its own path.
  * @param policy - file-effect policy to express as bwrap mounts.
  * @returns profile arguments before the trailing separator and command argv.
  */
@@ -23,7 +25,8 @@ export function bwrapProfileArgs(policy: SandboxPolicy): string[] {
 }
 
 /**
- * Build the Landlock launcher grants for one file-effect policy.
+ * Build the Landlock launcher grants for one file-effect policy. Under
+ * `workspace-write` every {@link workspaceRoots} entry is a read-write grant.
  * @param policy - file-effect policy to express as Landlock allow-list grants.
  * @returns launcher grant arguments before the trailing separator and command argv.
  */

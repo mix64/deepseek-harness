@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-为当前 Web 会话或未来会话选择权限预设。通用设置行只更改之后创建会话所用的默认值；composer 与 `/permission` 选择器切换当前会话。默认 Web 提供仅可查看、工作区内修改与完全权限。显式加载实验 Auto integration 后，当前会话选择器会增加带 `EXP` 标记的自动审查。通过可见选项选择完全权限或 Auto 时，需要分别确认对应风险；完整的 `/permission <preset>` 命令直接执行。宿主通过 Session 投影确认每次变更。
+为当前 Web 会话或未来会话选择权限预设。通用设置行只更改之后创建会话所用的默认值；composer 与 `/permission` 选择器切换当前会话。默认 Web 提供仅可查看、工作区内修改与完全权限。显式加载实验 Auto integration 后，当前会话选择器会增加带 `EXP` 标记的自动审查。通过可见选项选择完全权限或 Auto 时，需要分别确认对应风险；完整的 `/permission <preset>` 命令直接执行。宿主通过 Session 投影确认每次变更。composer 还显示当前会话的可写目录，并添加或移除其附加目录。
 
 ## 目录
 
@@ -35,6 +35,10 @@ kind: "package-reference"
 
 实时目录撤销某个预设时，composer 关闭对应的待确认对话框，并用 Session 的当前值替代已不可用的乐观选择。每次目录失效（无 payload 的通知或连接代际变更）会关闭已打开的 slash 选择器或其确认对话框，不消费草稿；而发布某个 picker 正在等待的读取结果时，该 picker 保持打开并保留失败与重试状态；重新打开时读取当前目录。已经提交的命令在响应结束前继续保持忙碌状态。
 
+### 目录控件
+
+composer 的 `conversation.input.left` 行获得会话目录控件。会话还没有附加目录时，触发按钮显示 **添加目录**，之后显示 **目录（n）**。菜单列出会话的主工作区、每个附加目录及其移除操作；目录选择器包填充本控件的 `conversation.input.directories.directoryFlow` 坑位期间显示 **添加目录…**；还列出尚未列入的每个已注册工作区，单击即可添加。每次编辑都以一个 JSON 字符串字面量传递路径，执行宿主的 `/add-dir` 或 `/remove-dir` 命令，因此也会作为命令出现在对话中；`sandboxRoots` Session 投影是唯一的确认。命令执行期间控件保持忙碌；添加时显示 **正在授予访问权限…**，因为 Windows 上的授权可能需要数秒。被拒绝时，宿主给出的原因显示在触发按钮旁，直到下一次编辑。附加目录只在 `workspace-write` 预设下可写；在其他预设下，菜单和触发按钮的提示会说明当前模式下不可写入。宿主未装配沙箱策略时，该控件不渲染任何内容。
+
 ### 设置行
 
 该行从宿主动态的 `defaultPreset` enum 推导选项，使用与当前会话选择器相同的本地化内置标签，并写入一条设置变更操作。`auto` 等仅限当前会话的 contribution 不会出现。该值只在之后创建会话时生效；改变它绝不会切换或改写当前会话。
@@ -47,7 +51,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-General Settings 行经 `ctx.configForms` 读取显式暴露的 `permission` Settings 描述符，并携带描述符 revision 写入一条 `settings.mutate` 路径操作；其 observable 经 slot 系统的 `hooks` compartment 传递，因此 React 钩子绑定归渲染器，推送失效通知会重新获取描述符。该值只在之后创建会话时读取。当前会话界面是挂在宿主 `/permission` 命令上的 popupSelect 装饰（`ctx.commandUi.decorate`）：宿主命令保留斜杠菜单行、带参形式与持久生命周期记账，装饰只把裸调用替换为选择器。一个进程级目录会在首次 Remote 读取前订阅无 payload 的目录通知，并且只发布当前连接代际中最新的完整成功结果。胜出的读取失败或连接 reset 会清空旧快照：composer seat 因此隐藏，直到后续既有触发重试，而 slash 选择器保持可用并在弹窗内显示失败与重试；旧连接代际与 dispose 后才返回的结果会被忽略。它的公共 observable 是 `{ value }` 与 `invalidations`（每次目录通知或连接代际变更打一个点）；失败仅供命令式加载内部使用。slash popup 与 composer seat 共用这份目录，而 Session `permissions` 投影只提供 `currentValue`。完全权限与自动审查各自携带本地化确认文案；Auto 还携带由共享 popup 外壳渲染的 badge。
+General Settings 行经 `ctx.configForms` 读取显式暴露的 `permission` Settings 描述符，并携带描述符 revision 写入一条 `settings.mutate` 路径操作；其 observable 经 slot 系统的 `hooks` compartment 传递，因此 React 钩子绑定归渲染器，推送失效通知会重新获取描述符。该值只在之后创建会话时读取。当前会话界面是挂在宿主 `/permission` 命令上的 popupSelect 装饰（`ctx.commandUi.decorate`）：宿主命令保留斜杠菜单行、带参形式与持久生命周期记账，装饰只把裸调用替换为选择器。一个进程级目录会在首次 Remote 读取前订阅无 payload 的目录通知，并且只发布当前连接代际中最新的完整成功结果。胜出的读取失败或连接 reset 会清空旧快照：composer seat 因此隐藏，直到后续既有触发重试，而 slash 选择器保持可用并在弹窗内显示失败与重试；旧连接代际与 dispose 后才返回的结果会被忽略。它的公共 observable 是 `{ value }` 与 `invalidations`（每次目录通知或连接代际变更打一个点）；失败仅供命令式加载内部使用。slash popup 与 composer seat 共用这份目录，而 Session `permissions` 投影只提供 `currentValue`。完全权限与自动审查各自携带本地化确认文案；Auto 还携带由共享 popup 外壳渲染的 badge。目录控件读取 `sandboxRoots` 投影、`permissions` 的当前值、Session 列表中会话的 `cwd`，并通过 `useWorkspaces` 读取已注册工作区；它经 `remote.commands.execute` 执行命令，以读取每个处理器的结果。其 directory-flow 坑位的占用状态经 `hooks` compartment 传递；选中路径后，流程保持打开并置 `busy`，直到命令结束。
 
 </details>
 
@@ -59,6 +63,7 @@ General Settings 行经 `ctx.configForms` 读取显式暴露的 `permission` Set
 需要了解权限界面以外的内容时，请阅读以下页面。这些页面从浏览器界面进一步介绍宿主策略与命令外壳。
 
 - [dsh-permission-presets](../../interaction/permission-presets/README.zh.md)——这些界面写入的宿主侧权限预设策略。
+- [dsh-sandbox-policy](../../sandbox/sandbox-policy/README.zh.md)——目录控件背后的 `/add-dir`、`/remove-dir` 命令与 `sandboxRoots` 投影。
 - [ui-commands](../ui-commands/README.zh.md)——`/permission` 装饰注册进的 popupSelect 外壳。
 - [ui-conversation](../ui-conversation/README.zh.md)——把这份共享目录与 Session 当前值合并的 composer seat。
 - [客户端包映射](../README.zh.md)——相邻的浏览器 UI 包。
@@ -68,7 +73,7 @@ General Settings 行经 `ctx.configForms` 读取显式暴露的 `permission` Set
 <a id="model-experience"></a>
 ## 模型体验
 
-间接影响。它的两个界面写入权限事实：设置行使未来会话带着全量值旋钮事件启动，而 `/permission` 选择器追加选中的当前会话预设。沙箱与审批消费方各自解析自己的旋钮事件；选择 `auto` 还会启用宿主 Auto integration 的独立逐调用 reviewer。
+间接影响。它的各个界面写入权限事实：设置行使未来会话带着全量值旋钮事件启动，而 `/permission` 选择器追加选中的当前会话预设。沙箱与审批消费方各自解析自己的旋钮事件；选择 `auto` 还会启用宿主 Auto integration 的独立逐调用 reviewer。目录控件的命令追加 `sandbox/additional-roots` 事件，沙箱策略会把它们渲染进模型的策略上下文。
 
 #### KV Cache 影响
 
@@ -84,6 +89,7 @@ General Settings 行经 `ctx.configForms` 读取显式暴露的 `permission` Set
 - **设置行仅限 Web**——非 Web 客户端仍可经 `/permission` 切换当前会话，但不会获得这项浏览器贡献。
 - **自动审查仅限当前会话**——General Settings 行有意省略它，且只有通过可见选择器选择时才显示实验确认；显式键入 `/permission auto` 已经构成明确同意。
 - **预设描述来自宿主**——本地化的内置标签旁边可能显示另一种语言编写的描述。
+- **候选工作区按路径的精确拼写比较**——已注册工作区的路径与已接纳目录只在大小写或分隔符上不同时仍会列出；添加它不会在宿主上产生任何变化。
 
 <a id="dev-note"></a>
 ### 开发备注

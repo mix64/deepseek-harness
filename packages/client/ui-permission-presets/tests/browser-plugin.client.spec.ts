@@ -12,7 +12,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
+import { RemoteError, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { remoteDefaultResponses } from '@deepseek-ai/dsh-client-test-runtime/src/assembly/remote-default-responses.ts'
 import { RemoteMock } from '@deepseek-ai/dsh-remote-mock'
 import { apply as settingsApply, inject as settingsInject } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -25,6 +25,10 @@ import {
   PermissionRow, type PermissionRowInjected,
 } from '../src/client/PermissionRow.tsx'
 import { PermissionSelect } from '../src/client/PermissionSelect.tsx'
+import { SessionDirectories } from '../src/client/SessionDirectories.tsx'
+import type { SessionDirectoriesInjected } from '../src/client/SessionDirectories.tsx'
+import type { CommandResult } from '@deepseek-ai/dsh-commands/types'
+import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { PermissionSelectInjected } from '../src/client/PermissionSelect.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { accessEn, accessZh } from '../src/client/locales.ts'
@@ -68,7 +72,16 @@ async function bench() {
       return Promise.resolve({ ok: true as const, value: catalog })
     },
   }
-  const remote = new TestRemote(ctx, { settings: mock.remote.settings, permissionPresets })
+  const executed: Array<{ sessionId: SessionId; line: string }> = []
+  let commandOutcome: (line: string) => RemoteResult<{ commandId: string; result: CommandResult } | undefined> =
+    () => ({ ok: true, value: { commandId: 'command-1', result: { kind: 'success' } } })
+  const commandsRemote = {
+    execute: (sessionId: SessionId, line: string) => {
+      executed.push({ sessionId, line })
+      return Promise.resolve(commandOutcome(line))
+    },
+  }
+  const remote = new TestRemote(ctx, { settings: mock.remote.settings, permissionPresets, commands: commandsRemote })
   ctx.provide('connection', {
     generation: {
       getSnapshot: () => ({ id: 1, host: { home: '/host', isLoopback: true } }),
@@ -80,6 +93,7 @@ async function bench() {
     children: {
       'settings.general.item': { kind: 'list', scope: 'root' },
       'conversation.input.permission': { kind: 'single', scope: 'session' },
+      'conversation.input.left': { kind: 'list', scope: 'session' },
     },
   } as never, () => null)
   await ctx.plugin({ inject: [...settingsInject], apply: settingsApply }).await()
@@ -150,6 +164,10 @@ async function bench() {
       .find(entry => entry.component === PermissionRow),
     permissionSelect: () => ctx.slots.entries('conversation.input.permission')
       .find(entry => entry.component === PermissionSelect),
+    sessionDirectories: () => ctx.slots.entries('conversation.input.left')
+      .find(entry => entry.component === SessionDirectories),
+    executed,
+    setCommandOutcome: (outcome: typeof commandOutcome) => { commandOutcome = outcome },
   }
 }
 
@@ -327,6 +345,45 @@ describe('ui-permission browser plugin', () => {
       .rejects.toThrow(/not materialized/)
   })
 
+  it('edits the Session directories through /add-dir and /remove-dir with a JSON-quoted path', async () => {
+    const b = await bench()
+    const entry = b.sessionDirectories()!
+    expect(entry.options).toEqual({ id: 'session-directories', order: 100 })
+    const injected = (entry.inject! as (sessionId: SessionId) => SessionDirectoriesInjected)(sid('s1'))
+
+    await expect(injected.edit({ kind: 'add', path: 'E:\\with space' })).resolves.toEqual({ ok: true })
+    await expect(injected.edit({ kind: 'remove', path: '/extra' })).resolves.toEqual({ ok: true })
+    expect(b.executed).toEqual([
+      { sessionId: 's1', line: '/add-dir "E:\\\\with space"' },
+      { sessionId: 's1', line: '/remove-dir "/extra"' },
+    ])
+
+    b.setCommandOutcome(() => ({ ok: true, value: { commandId: 'command-2', result: { kind: 'error', text: '"/x" overlaps the session workspace' } } }))
+    await expect(injected.edit({ kind: 'add', path: '/x' }))
+      .resolves.toEqual({ ok: false, message: '"/x" overlaps the session workspace' })
+    b.setCommandOutcome(() => ({ ok: true, value: undefined }))
+    await expect(injected.edit({ kind: 'add', path: '/x' }))
+      .resolves.toEqual({ ok: false, message: 'unknown command: /add-dir "/x"' })
+    b.setCommandOutcome(() => ({ ok: false, error: new RemoteError('gateway/internal', 'boom', {}) }))
+    await expect(injected.edit({ kind: 'remove', path: '/x' }))
+      .resolves.toEqual({ ok: false, message: 'gateway/internal: boom' })
+  })
+
+  it('reports the directory-flow hole occupancy it declares', async () => {
+    const b = await bench()
+    const injected = (b.sessionDirectories()!.inject! as (sessionId: SessionId) => SessionDirectoriesInjected)(sid('s1'))
+    const flow = injected.hooks.directoryFlow
+    expect(flow.getSnapshot()).toBe(false)
+    const changed = vi.fn()
+    const unsubscribe = flow.subscribe(changed)
+    const dispose = b.ctx.slots.register({ name: 'conversation.input.directories.directoryFlow' } as never, () => null)
+    expect(flow.getSnapshot()).toBe(true)
+    await vi.waitFor(() => { expect(changed).toHaveBeenCalled() })
+    dispose()
+    expect(flow.getSnapshot()).toBe(false)
+    unsubscribe()
+  })
+
   it('disposal removes the decoration (HMR safety)', async () => {
     const b = await bench()
     expect(b.decoration()).toBeDefined()
@@ -336,5 +393,6 @@ describe('ui-permission browser plugin', () => {
     expect(b.decoration()).toBeUndefined()
     expect(b.permissionRow()).toBeUndefined()
     expect(b.permissionSelect()).toBeUndefined()
+    expect(b.sessionDirectories()).toBeUndefined()
   })
 })

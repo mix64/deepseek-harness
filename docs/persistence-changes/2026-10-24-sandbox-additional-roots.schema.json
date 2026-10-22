@@ -1,0 +1,17 @@
+{
+  "formatVersion": 2,
+  "roots": [
+    {"key":"event:sandbox/additional-roots","kind":"event","event":"sandbox/additional-roots","surface":false,"digest":"8a61c5175d1ef8e79b565b1cda22132d30ef2a3028bde257516c22f5a796b7aa"}
+  ],
+  "types": [],
+  "nodes": {
+    "0657d3ca5ac4e7bf": {"kind":"primitive","type":"number"},
+    "4cd48f3e5108bd6e": {"kind":"primitive","type":"string"},
+    "76632533f67879dc": {"kind":"literal","value":"delegation"},
+    "8a61c5175d1ef8e7": {"kind":"object","properties":[{"name":"data","type":"ca9c04bc9667d980","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"ab0146c3d9fc89a5","optional":false}],"indices":[]},
+    "93c33d9687613293": {"kind":"array","element":"4cd48f3e5108bd6e"},
+    "ab0146c3d9fc89a5": {"kind":"literal","value":"sandbox/additional-roots"},
+    "ca9c04bc9667d980": {"kind":"object","properties":[{"name":"roots","type":"93c33d9687613293","optional":false},{"name":"source","type":"76632533f67879dc","optional":true}],"indices":[]},
+    "dacf3d5f3e4ff619": {"kind":"literal","value":true}
+  }
+}

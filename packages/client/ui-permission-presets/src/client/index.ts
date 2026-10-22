@@ -13,7 +13,11 @@
  * confirmation. The Full access row carries the same explicit risk gate as
  * the composer chip; the shared popup shell owns the modal mechanics.
  * The General-settings row separately writes the default preset for sessions
- * created later through the host Settings API.
+ * created later through the host Settings API. The composer's
+ * session-directories control lists the current Session's additional writable
+ * directories from the `sandboxRoots` projection and edits them through the
+ * host `/add-dir` and `/remove-dir` commands; it declares its own
+ * directory-flow hole for the composed picker package.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -34,12 +38,17 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { CommandUiContract, SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { ClientSessionContext } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { PermissionCatalogDirectory } from './catalog.ts'
 import { PermissionSelect } from './PermissionSelect.tsx'
 import type { PermissionSelectInjected } from './PermissionSelect.tsx'
 import { PermissionRow } from './PermissionRow.tsx'
 import type { PermissionRowInjected } from './PermissionRow.tsx'
+import { SessionDirectories } from './SessionDirectories.tsx'
+import type { DirectoryEdit, DirectoryEditOutcome, SessionDirectoriesInjected } from './SessionDirectories.tsx'
+import {
+  en as directoriesEn, ja as directoriesJa, PERMISSION_DIRECTORIES_NS, zh as directoriesZh,
+} from './directories-locales.ts'
 import {
   accessEn, accessJa, accessEs, accessFr, accessDe, accessRu, accessPt, accessZh, en, ja, es, fr, de, ru, pt, PERMISSION_ACCESS_NS, zh,
 } from './locales.ts'
@@ -52,13 +61,16 @@ export type { PermissionRowInjected, PermissionRowProps } from './PermissionRow.
 export type { PermissionCatalogState } from './catalog.ts'
 export type { PermissionSelectInjected, PermissionSelectProps } from './PermissionSelect.tsx'
 export type {
+  DirectoryEdit, DirectoryEditOutcome, SessionDirectoriesInjected, SessionDirectoriesProps,
+} from './SessionDirectories.tsx'
+export type {
   PermissionDefaultOption, PermissionSettingsState,
 } from './settings-store.ts'
 
 /** Required services (cordis fiber inject). */
 export const inject = [
   'commandUi', 'connection', 'sessions', 'slots', 'locale', 'remote',
-  'remote.permissionPresets', 'remote.settings',
+  'remote.commands', 'remote.permissionPresets', 'remote.settings',
   'configForms', 'settingsSchema',
 ]
 
@@ -66,7 +78,20 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Current-session permission picker and confirmation copy. */
     'permission.access': keyof typeof accessEn
+    /** The composer's session-directories control copy. */
+    'permission.directories': keyof typeof directoriesEn
   }
+}
+
+/** The directory-flow hole the session-directories control declares. */
+const DIRECTORY_FLOW = 'conversation.input.directories.directoryFlow'
+
+/**
+ * The command line for one directory edit. The path travels as one JSON
+ * string literal, which the host commands accept for any path spelling.
+ */
+function directoryCommand(edit: DirectoryEdit): string {
+  return `/${edit.kind === 'add' ? 'add-dir' : 'remove-dir'} ${JSON.stringify(edit.path)}`
 }
 
 /** Read one session's current permissions projection value (undefined = capability absent). */
@@ -182,6 +207,36 @@ export function apply(ctx: ClientContext): void {
       select: preset => submit(sessionId, preset),
     }),
   }, PermissionSelect))
+
+  ctx.effect(
+    () => ctx.locale.register(PERMISSION_DIRECTORIES_NS, { zh: directoriesZh, en: directoriesEn, ja: directoriesJa }),
+    'ui-permission: session-directories dictionaries',
+  )
+  // Failure strings stay English (error-surface policy: not localized); the
+  // control wraps them in its localized failure line.
+  const editDirectories = async (sessionId: SessionId, edit: DirectoryEdit): Promise<DirectoryEditOutcome> => {
+    const line = directoryCommand(edit)
+    const result = await ctx.remote.commands.execute(sessionId, line, [])
+    if (!result.ok) return { ok: false, message: `${result.error.code}: ${result.error.message}` }
+    if (result.value === undefined) return { ok: false, message: `unknown command: ${line}` }
+    return result.value.result.kind === 'error' ? { ok: false, message: result.value.result.text } : { ok: true }
+  }
+  // Stable occupancy source (the renderer's hook cache keys by source identity).
+  const directoryFlow: HostObservable<boolean> = {
+    getSnapshot: () => ctx.slots.entries(DIRECTORY_FLOW).length > 0,
+    subscribe: listener => ctx.slots.subscribe(DIRECTORY_FLOW, listener),
+  }
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left',
+    id: 'session-directories',
+    order: 100,
+    locale: PERMISSION_DIRECTORIES_NS,
+    children: { 'conversation.input.directories.directoryFlow': { kind: 'single', scope: 'root' } },
+    inject: (sessionId: SessionId): SessionDirectoriesInjected => ({
+      hooks: { directoryFlow },
+      edit: edit => editDirectories(sessionId, edit),
+    }),
+  }, SessionDirectories))
 
   ctx.effect(() => command.decorate({
     name: 'permission',

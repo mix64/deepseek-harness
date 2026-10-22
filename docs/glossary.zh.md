@@ -39,6 +39,10 @@ DeepSeek Harness 的领域词汇为每个概念规定一个规范术语。各术
 - **Round**：承载一个轮次的外层策略迭代，例如一个 [Goal Round](#goal-round) 或一次使用全新 agent 的 Ralph 尝试。Round 计数器归该策略所有，并不统计会话中的每个轮次。<a id="round"></a>
 - **交互段**：连续的[轮次](#turn)，从首个[步骤](#step)接纳真人输入的轮次起，到下一个这样的轮次为止；由通知（子 agent 完成、Goal Round、定时任务等）唤醒的轮次归入前面的交互段。Chat 的「下次发送时收起」保持最新交互段展开。<a id="exchange"></a>
 
+## 沙箱
+
+- **附加根目录（additional root）**：会话的沙箱模式为 `workspace-write` 时，除主根目录（其不可变 cwd）外该会话还可写入的执行环境绝对目录。每个会话以 `sandbox/additional-roots` 事件记录自己的有序列表；委派的子会话以及在同一工作区中新建的会话以该列表启动，强制执行时会丢弃已不存在、或与主根目录、其他根目录或临时区域重叠的根目录。<a id="additional-root"></a>
+
 ## Ralph
 
 - **Ralph 循环**：一次面向不可变目标的前台全新 agent 工作流运行。它是由工作流和 subagent 原语组合而成的面向模型的工具策略，不是同会话目标、agent loop（智能体循环）模式、调度器或通用工作流脚本功能。<a id="ralph-loop"></a>

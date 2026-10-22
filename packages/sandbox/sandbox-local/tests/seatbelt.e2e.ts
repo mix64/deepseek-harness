@@ -18,7 +18,7 @@ import { checkExtraWrites, checkRedirectedRoot } from './extra-roots.ts'
  * workspace-write proves the workspace-root grant itself.
  */
 
-const probe = spawnSync('sandbox-exec', [...seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
+const probe = spawnSync('sandbox-exec', [...seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: '/', additionalRoots: [] }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
 const seatbeltUsable = probe.status === 0
 const gitUsable = spawnSync('git', ['--version'], { timeout: 5_000, stdio: 'ignore' }).status === 0
 
@@ -69,7 +69,7 @@ describe.skipIf(!seatbeltUsable)('sandbox-local: real Seatbelt confinement throu
   it('read-only denies a write — the file must NOT exist, and the kernel speaks the advertised dialect', async () => {
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
-    const { result, confined } = await runConfined(sandbox, `echo hi > ${workdir}/denied.txt`, { mode: 'read-only', workspaceRoot: workdir })
+    const { result, confined } = await runConfined(sandbox, `echo hi > ${workdir}/denied.txt`, { mode: 'read-only', workspaceRoot: workdir, additionalRoots: [] })
     expect(result.status).not.toBe(0)
     expect(confined.enforcement).toBe('full')
     // The wrap's denialSignatures must be what the kernel actually prints.
@@ -80,7 +80,7 @@ describe.skipIf(!seatbeltUsable)('sandbox-local: real Seatbelt confinement throu
   it('read-only keeps the tree readable/executable and /dev/null writable', async () => {
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
-    const { result } = await runConfined(sandbox, 'ls / > /dev/null && echo dev-ok', { mode: 'read-only', workspaceRoot: workdir })
+    const { result } = await runConfined(sandbox, 'ls / > /dev/null && echo dev-ok', { mode: 'read-only', workspaceRoot: workdir, additionalRoots: [] })
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('dev-ok\n')
   })
@@ -91,7 +91,7 @@ describe.skipIf(!seatbeltUsable)('sandbox-local: real Seatbelt confinement throu
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
     const target = join(workdir, 'tmp-denied.txt')
-    const { result } = await runConfined(sandbox, `echo hi > ${target}`, { mode: 'read-only', workspaceRoot: await tempDir(homedir()) })
+    const { result } = await runConfined(sandbox, `echo hi > ${target}`, { mode: 'read-only', workspaceRoot: await tempDir(homedir()), additionalRoots: [] })
     expect(result.status).not.toBe(0)
     expect(existsSync(target)).toBe(false)
   })
@@ -101,11 +101,11 @@ describe.skipIf(!seatbeltUsable)('sandbox-local: real Seatbelt confinement throu
     const outside = await tempDir(homedir())
     const sandbox = await provider()
 
-    const inside = await runConfined(sandbox, `printf seatbelt-ok > ${workdir}/allowed.txt`, { mode: 'workspace-write', workspaceRoot: workdir })
+    const inside = await runConfined(sandbox, `printf seatbelt-ok > ${workdir}/allowed.txt`, { mode: 'workspace-write', workspaceRoot: workdir, additionalRoots: [] })
     expect(inside.result.status).toBe(0)
     expect(readFileSync(join(workdir, 'allowed.txt'), 'utf8')).toBe('seatbelt-ok')
 
-    const denied = await runConfined(sandbox, `echo hi > ${outside}/denied.txt`, { mode: 'workspace-write', workspaceRoot: workdir })
+    const denied = await runConfined(sandbox, `echo hi > ${outside}/denied.txt`, { mode: 'workspace-write', workspaceRoot: workdir, additionalRoots: [] })
     expect(denied.result.status).not.toBe(0)
     expect(existsSync(join(outside, 'denied.txt'))).toBe(false)
   })
@@ -118,7 +118,7 @@ describe.skipIf(!seatbeltUsable)('sandbox-local: real Seatbelt confinement throu
     const { result } = await runConfined(
       sandbox,
       `printf tmp-ok > ${quote(join(hostTmp, 'scratch.txt'))} && printf user-tmp-ok > ${quote(join(userTmp, 'scratch.txt'))}`,
-      { mode: 'workspace-write', workspaceRoot: workdir },
+      { mode: 'workspace-write', workspaceRoot: workdir, additionalRoots: [] },
     )
     expect(result.status).toBe(0)
     expect(readFileSync(join(hostTmp, 'scratch.txt'), 'utf8')).toBe('tmp-ok')
@@ -151,7 +151,7 @@ describe.skipIf(!seatbeltUsable)('sandbox-local: real Seatbelt confinement throu
     const sandbox = await provider()
     const addCommand = `cd ${quote(linked)} && git add linked.txt && git -c commit.gpgSign=false commit -qm linked`
 
-    const baseline = await runConfined(sandbox, addCommand, { mode: 'workspace-write', workspaceRoot: linked }, gitEnv)
+    const baseline = await runConfined(sandbox, addCommand, { mode: 'workspace-write', workspaceRoot: linked, additionalRoots: [] }, gitEnv)
     expect(baseline.result.status).not.toBe(0)
     expect(baseline.result.stderr).toContain('index.lock')
 
@@ -159,7 +159,7 @@ describe.skipIf(!seatbeltUsable)('sandbox-local: real Seatbelt confinement throu
     const allowed = await runConfined(sandbox, addCommand, {
       mode: 'workspace-write',
       workspaceRoot: linked,
-      additionalWritableRoots: [gitDir],
+      additionalRoots: [], additionalWritableRoots: [gitDir],
     }, gitEnv)
     expect(allowed.result.status, allowed.result.stderr).toBe(0)
     expect(execFileSync('git', ['-C', linked, 'show', 'HEAD:linked.txt'], { env: gitEnv, encoding: 'utf8' })).toBe('linked\n')
@@ -168,12 +168,12 @@ describe.skipIf(!seatbeltUsable)('sandbox-local: real Seatbelt confinement throu
     const denied = await runConfined(sandbox, `printf hijack > ${quote(join(primary, 'source.txt'))}`, {
       mode: 'workspace-write',
       workspaceRoot: linked,
-      additionalWritableRoots: [gitDir],
+      additionalRoots: [], additionalWritableRoots: [gitDir],
     })
     expect(denied.result.status).not.toBe(0)
     expect(readFileSync(join(primary, 'source.txt'), 'utf8')).toBe('source\n')
     const readOnly = await runConfined(sandbox, `printf denied > ${quote(join(gitDir, 'denied.txt'))}`, {
-      mode: 'read-only', workspaceRoot: linked, additionalWritableRoots: [gitDir],
+      mode: 'read-only', workspaceRoot: linked, additionalRoots: [], additionalWritableRoots: [gitDir],
     })
     expect(readOnly.result.status).not.toBe(0)
     expect(existsSync(join(gitDir, 'denied.txt'))).toBe(false)

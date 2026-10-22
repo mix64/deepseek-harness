@@ -14,7 +14,7 @@ const sandboxUsable = await (async () => {
   const probe = new Context()
   try {
     await probe.plugin(LocalSandbox)
-    await probe.sandbox.confine([process.execPath, '--version'], { mode: 'read-only', workspaceRoot: process.cwd() })
+    await probe.sandbox.confine([process.execPath, '--version'], { mode: 'read-only', workspaceRoot: process.cwd(), additionalRoots: [] })
     return true
   } catch (error: unknown) {
     if (error instanceof SandboxUnavailableError) return false

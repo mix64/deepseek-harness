@@ -29,7 +29,7 @@ export async function checkExtraWrites(provider: LocalSandboxProvider, directory
   const workspaceRoot = realpathSync.native(await directory(homedir()))
   const extra = realpathSync.native(await directory(homedir()))
   const outside = realpathSync.native(await directory(homedir()))
-  const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot, additionalWritableRoots: [extra] }
+  const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot, additionalRoots: [], additionalWritableRoots: [extra] }
   const allowed = join(extra, 'allowed.txt')
   const result = await run(provider, `printf allowed > ${quote(allowed)}`, policy)
   expect(result.status, result.stderr).toBe(0)
@@ -55,7 +55,7 @@ export async function checkRedirectedRoot(provider: LocalSandboxProvider, direct
   const outside = realpathSync.native(await directory(homedir()))
   const extra = join(workspaceRoot, 'extra')
   mkdirSync(extra)
-  const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot, additionalWritableRoots: [extra] }
+  const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot, additionalRoots: [], additionalWritableRoots: [extra] }
   const replaced = await run(provider, `rmdir ${quote(extra)} && ln -s ${quote(outside)} ${quote(extra)}`, policy)
   const target = join(outside, 'escape.txt')
   if (replaced.status === 0) {

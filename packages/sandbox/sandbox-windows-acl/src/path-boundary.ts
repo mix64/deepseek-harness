@@ -38,3 +38,19 @@ export function assertPrivateTempDisjoint(writableDirs: readonly string[], tempD
     }
   }
 }
+
+/**
+ * Reject overlap between any two workspace roots: a root nested in another
+ * would carry both roots' capabilities, so removing either root from a
+ * session could not narrow the nested tree.
+ * @param dirs - existing workspace roots granted to one invocation.
+ */
+export function assertDisjointDirectories(dirs: readonly string[]): void {
+  for (const [index, first] of dirs.entries()) {
+    for (const second of dirs.slice(index + 1)) {
+      if (containsDirectory(first, second) || containsDirectory(second, first)) {
+        throw new Error(`Windows ACL workspace roots must be disjoint: ${first}; ${second}`)
+      }
+    }
+  }
+}

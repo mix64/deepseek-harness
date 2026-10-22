@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.3/additional-writable-roots/guide.md
+/:
+  en: 65788c6874ec67c7
+  zh: d8aa8ae59a749f93
+/pass-additional-writable-roots-through-sandbox-policies:
+  en: 4251ad827ae24a0d
+  zh: 6fa5caebfa3fa6f5
+/pass-additional-writable-roots-through-sandbox-policies/change:
+  en: 3a57a2c195e6dd04
+  zh: dad03ffd03912f10
+/pass-additional-writable-roots-through-sandbox-policies/migration:
+  en: 1c0314b9d40862ec
+  zh: 44c27e1c0a36b44e

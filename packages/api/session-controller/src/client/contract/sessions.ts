@@ -18,6 +18,14 @@ import type { SessionReferenceSource } from '../index.ts'
 
 export type { AgentContext } from '../scope.ts'
 
+/** A Session the Host created or reused for a new conversation. */
+export interface SessionCreated {
+  /** The created or reused Session. */
+  readonly sessionId: SessionId
+  /** Requested additional roots the Host refused, as requested; empty when every path was admitted. */
+  readonly rejectedAdditionalRoots: readonly string[]
+}
+
 /** Known Session identity or durable direct-parent subagent address; an address owns no lifetime. */
 export type SessionTarget = SessionId | SubagentAddress
 
@@ -81,16 +89,21 @@ export interface ISessions {
   /**
    * Create a Session for a new conversation on the Host. The Host reuses the
    * named blank Session while it is reusable and otherwise creates another; the
-   * Session runs the named preset, or the Host default when none is named.
-   * @param opts - target workspace or directory, an optional blank Session to reuse, and an optional Agent preset.
-   * @returns the catalogued identity the Host created or reused; retain it before borrowing its binding.
+   * Session runs the named preset, or the Host default when none is named. Its
+   * additional writable directories become the admitted subset of
+   * `additionalRoots`, and none when that is omitted.
+   * @param opts - target workspace or directory, an optional blank Session to reuse, an optional Agent preset, and additional roots.
+   * @returns the catalogued identity the Host created or reused (retain it before borrowing its binding) and the refused roots.
+   * @throws {SessionCreateError} when the Host refuses; `session/additional-roots-failed` names a listed Session
+   *   that exists without the requested roots.
    */
   create(opts?: {
     workspaceId?: WorkspaceId
     cwd?: string
     sessionId?: SessionId
     agentPreset?: string
-  }): Promise<SessionId>
+    additionalRoots?: readonly string[]
+  }): Promise<SessionCreated>
   /**
    * Resolve an already discovered direct-parent address without opening it.
    * @param id - possible addressed child id.

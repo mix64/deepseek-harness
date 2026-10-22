@@ -1,12 +1,14 @@
 /** Cancellation and settlement of complete PTC calls, including nested tools. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
+import { sameSandboxPolicy } from '@deepseek-ai/dsh-sandbox'
+import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { toolErrorMessage } from '@deepseek-ai/dsh-tools/pipeline'
 import { CodeRunFailedError } from './errors.ts'
 
 interface Call {
-  mode: SandboxMode | undefined
+  policy: SandboxExecutionPolicy | undefined
   controller: AbortController
   signal: AbortSignal
   done: Promise<void>
@@ -29,9 +31,13 @@ export class PtcCalls {
    */
   constructor(ctx: Context) {
     ctx.on('session/event', (session, event) => {
-      if (event.type !== 'sandbox/mode') return
+      const policies = ctx.get('sandboxPolicy')
+      if (policies === undefined) return
       for (const call of this.calls.get(session.id) ?? []) {
-        if (call.mode !== undefined && call.mode !== event.data.mode) call.controller.abort(new Error('sandbox mode changed'))
+        if (call.policy === undefined) continue
+        const next = policies.successor(call.policy, event)
+        if (next === undefined || sameSandboxPolicy(call.policy, next)) continue
+        call.controller.abort(new Error(next.mode === call.policy.mode ? 'sandbox additional directories changed' : 'sandbox mode changed'))
       }
     }, { global: true })
     ctx.effect(() => async () => {
@@ -47,12 +53,15 @@ export class PtcCalls {
    * Await canceled predecessors before resolving authority and admitting a call.
    * @param sessionId - Calling Session.
    * @param signal - Caller cancellation.
-   * @param mode - Current standing mode, if supported, read after preceding cleanup.
+   * @param policy - Current standing policy, if supported, read after preceding cleanup.
    * @param run - Complete call, including nested-tool cleanup.
    * @returns The call result.
    */
   async run<T>(
-    sessionId: SessionId, signal: AbortSignal, mode: () => SandboxMode | undefined, run: (signal: AbortSignal) => Promise<T>,
+    sessionId: SessionId,
+    signal: AbortSignal,
+    policy: () => SandboxExecutionPolicy | undefined,
+    run: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     for (;;) {
       const reset = this.resets.get(sessionId)
@@ -71,7 +80,7 @@ export class PtcCalls {
     const controller = new AbortController()
     const done = Promise.withResolvers<undefined>()
     const currentSignal = AbortSignal.any([signal, controller.signal])
-    const call = { mode: mode(), controller, signal: currentSignal, done: done.promise }
+    const call = { policy: policy(), controller, signal: currentSignal, done: done.promise }
     let calls = this.calls.get(sessionId)
     if (calls === undefined) this.calls.set(sessionId, calls = new Set())
     calls.add(call)

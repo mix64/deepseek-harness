@@ -32,7 +32,7 @@ function start(x: { execute(spec: ShellExecSpec): Promise<ShellExecution> }, spe
  * `sandbox-exec` rejects the profile.
  */
 
-const probe = spawnSync('sandbox-exec', [...seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
+const probe = spawnSync('sandbox-exec', [...seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: '/', additionalRoots: [] }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
 const seatbeltUsable = probe.status === 0
 
 let ctx: Context | undefined
@@ -133,7 +133,7 @@ describe.skipIf(!seatbeltUsable)('bash-sandbox: real Seatbelt confinement throug
     expect(strict.exitCode).not.toBe(0)
     expect(strict.sandbox).toEqual({ mode: 'read-only', denied: true, enforcement: 'full' })
     expect(existsSync(join(workdir, 'escalated.txt'))).toBe(false)
-    const retried = await run(bash, bash.resolve({ command, sandboxPolicy: { mode: 'workspace-write', workspaceRoot: workdir } }))
+    const retried = await run(bash, bash.resolve({ command, sandboxPolicy: { mode: 'workspace-write', workspaceRoot: workdir, additionalRoots: [] } }))
     expect(retried.exitCode).toBe(0)
     expect(retried.sandbox).toEqual({ mode: 'workspace-write', denied: false, enforcement: 'full' })
     expect(readFileSync(join(workdir, 'escalated.txt'), 'utf8')).toBe('escalated')

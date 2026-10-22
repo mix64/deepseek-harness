@@ -1,13 +1,17 @@
 /** Node PTC process invalidation after a committed Session file-policy change. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
+import { sameSandboxPolicy } from '@deepseek-ai/dsh-sandbox'
+import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 
 interface Process {
   sessionId: SessionId
-  mode: SandboxMode
-  release: () => Promise<void>
+  /** The Session's standing policy when the process was admitted. */
+  policy: SandboxExecutionPolicy
+  release: (reason: Error) => Promise<void>
+  /** Why cleanup started; set at invalidation or provider disposal. */
+  reason?: Error
   invalidated: boolean
   cleanup?: Promise<void>
 }
@@ -22,30 +26,34 @@ export class PolicyProcesses {
    */
   constructor(private readonly ctx: Context) {
     ctx.on('session/event', (session, event) => {
-      if (event.type !== 'sandbox/mode') return
       for (const process of this.processes) {
-        if (process.sessionId !== session.id || process.mode === event.data.mode) continue
+        if (process.sessionId !== session.id) continue
+        const next = ctx.sandboxPolicy.successor(process.policy, event)
+        if (next === undefined || sameSandboxPolicy(process.policy, next)) continue
         process.invalidated = true
+        process.reason ??= new Error(next.mode === process.policy.mode ? 'sandbox additional directories changed' : 'sandbox mode changed')
         void this.release(process).catch((error: unknown) => { ctx.logger.warn(error) })
       }
     }, { global: true })
     ctx.effect(() => async () => {
-      await this.settle([...this.processes])
+      const processes = [...this.processes]
+      for (const process of processes) process.reason ??= new Error('Node PTC runtime disposed')
+      await this.settle(processes)
     }, 'Node PTC policy cleanup')
   }
 
   /**
    * Track an admitted call or retained process until its owner confirms cleanup.
    * @param policy - Resolved process policy, including an optional Session identity.
-   * @param release - Idempotent cancellation and awaited cleanup.
+   * @param release - Idempotent cancellation and awaited cleanup; receives why cleanup started.
    * @returns Removal after successful process cleanup.
    */
-  register(policy: SandboxExecutionPolicy, release: () => Promise<void>): () => void {
+  register(policy: SandboxExecutionPolicy, release: (reason: Error) => Promise<void>): () => void {
     if (policy.sessionId === undefined) return () => {}
     const session = this.ctx.get('sessions')?.get(policy.sessionId)
     const process: Process = {
       sessionId: policy.sessionId,
-      mode: session === undefined ? policy.mode : this.ctx.sandboxPolicy.resolve({ session }).mode,
+      policy: session === undefined ? policy : this.ctx.sandboxPolicy.resolve({ session }),
       release,
       invalidated: false,
     }
@@ -64,7 +72,9 @@ export class PolicyProcesses {
 
   private release(process: Process): Promise<void> {
     if (process.cleanup !== undefined) return process.cleanup
-    process.cleanup = process.release().then(() => { this.processes.delete(process) }, (error: unknown) => {
+    /* v8 ignore next -- only invalidation and disposal start cleanup, and both set the reason first. */
+    const reason = process.reason ?? new Error('Node PTC process cleanup')
+    process.cleanup = process.release(reason).then(() => { this.processes.delete(process) }, (error: unknown) => {
       delete process.cleanup
       throw error
     })
