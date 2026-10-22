@@ -39,6 +39,10 @@ Domain vocabulary for DeepSeek Harness uses one canonical term per concept. Term
 - **round** — an outer policy iteration containing a turn, such as a [goal round](#goal-round) or one fresh-agent Ralph attempt. Round counters belong to that policy and do not count every turn in a session. <a id="round"></a>
 - **exchange** — consecutive [turns](#turn) from a turn whose first [step](#step) admits human input until the next such turn; turns woken by notices, such as settled subagents, goal rounds, or schedules, stay in the preceding exchange. Chat's next-message folding keeps the latest exchange expanded. <a id="exchange"></a>
 
+## sandbox
+
+- **additional root** — an absolute execution-world directory a session may write under besides its main root (its immutable cwd) while its sandbox mode is `workspace-write`. Each session records its own ordered list as `sandbox/additional-roots` events; delegated children and New Sessions in the same Workspace start with that list, and enforcement drops a root that no longer exists or overlaps the main root, another root, or a temp area. <a id="additional-root"></a>
+
 ## Ralph
 
 - **Ralph loop** — one foreground fresh-agent workflow run toward an immutable objective. It is a model-facing tool policy composed from workflow and subagent primitives, not a same-session goal, agent-loop mode, scheduler, or generic workflow-script feature. <a id="ralph-loop"></a>

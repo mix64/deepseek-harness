@@ -5,7 +5,7 @@ import {
   createScope, MutableSessionEventSource, scopeOf, SESSION_SEARCH_RESULT_LIMIT,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
-  AgentContext, ISessions, ProjectionsFace, SessionBinding, SessionFace, SessionListState,
+  AgentContext, ISessions, ProjectionsFace, SessionBinding, SessionCreated, SessionFace, SessionListState,
   SessionEventLikeEntry, SessionLiveEventEntry, SessionSearchResultItem,
   SessionReference, SessionReferenceSource, SessionRetainInfo, SessionRetainOptions,
   SessionSnapshot, SessionSummary, SessionTarget, SubmissionHandle,
@@ -320,7 +320,7 @@ export class TestSessions implements ISessions {
 
   /** Replaceable search behavior (see {@link TestSessions.stubSearch}). */
   private searchStub: ((query: string, signal: AbortSignal) => { items: SessionSearchResultItem[]; hasMore: boolean }) | undefined
-  private createStub: ((opts: Parameters<ISessions['create']>[0]) => Promise<SessionId>) | undefined
+  private createStub: ISessions['create'] | undefined
 
   /**
    * @param stabilize - the owning runtime's act wrapper.
@@ -608,21 +608,21 @@ export class TestSessions implements ISessions {
 
   /**
    * Install Session creation behavior for navigation tests.
-   * @param impl - implementation that must return an already-added fixture id.
+   * @param impl - implementation that must name an already-added fixture id.
    */
-  stubCreate(impl: (opts: Parameters<ISessions['create']>[0]) => Promise<SessionId>): void {
+  stubCreate(impl: ISessions['create']): void {
     this.createStub = impl
   }
 
   /** Create through the installed test behavior and require a catalogued fixture. */
-  async create(opts?: Parameters<ISessions['create']>[0]): Promise<SessionId> {
+  async create(opts?: Parameters<ISessions['create']>[0]): Promise<SessionCreated> {
     this.calls.push({ method: 'create', args: [opts] })
     if (this.createStub === undefined) {
       throw new Error('test sessions: create is not stubbed — call stubCreate() first')
     }
-    const id = await this.createStub(opts)
-    this.require(id)
-    return id
+    const created = await this.createStub(opts)
+    this.require(created.sessionId)
+    return created
   }
 
   /** Resolve a retained or catalog-derived address independently of a view. */

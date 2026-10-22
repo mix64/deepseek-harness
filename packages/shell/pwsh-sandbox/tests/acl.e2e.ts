@@ -67,7 +67,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('pwsh-sandbox real ACL confinement
   })
 
   it('read-only: ordinary path writes denied, reads fine, partial and denial facts ride the result', async () => {
-    const policy: SandboxExecutionPolicy = { mode: 'read-only', workspaceRoot: writableDir }
+    const policy: SandboxExecutionPolicy = { mode: 'read-only', workspaceRoot: writableDir, additionalRoots: [] }
     const probe = [
       "$ErrorActionPreference='SilentlyContinue';",
       `try{Set-Content -Path '${writableDir}\\ro-write.txt' -Value ok -ErrorAction Stop;'TARGET-WRITE: OK'}catch{'TARGET-WRITE: DENIED'};`,
@@ -95,7 +95,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('pwsh-sandbox real ACL confinement
   }, 60_000)
 
   it('workspace-write: workspace and private temp writable, ambient temp and escape denied', async () => {
-    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: writableDir }
+    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: writableDir, additionalRoots: [] }
     const probe = [
       "$ErrorActionPreference='SilentlyContinue';",
       `try{Set-Content -Path '${writableDir}\\ww-write.txt' -Value ok -ErrorAction Stop;'TARGET-WRITE: OK'}catch{'TARGET-WRITE: DENIED'};`,

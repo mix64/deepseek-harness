@@ -8,7 +8,13 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
+import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
+import type { AdditionalRoot } from '@deepseek-ai/dsh-sandbox-policy'
+import { outsideTempWorkspaceParent } from '../../../../scripts/snapshot-workspace-parent.ts'
 import {
   ApiSessionAgentController,
   ApiSessionCwdConflict,
@@ -157,6 +163,105 @@ describe('Session creation failures', () => {
     await ctx.fiber.dispose()
   })
 
+})
+
+describe('Session additional roots', () => {
+  /** A workspace and two sibling directories outside the host temp areas. */
+  function directories(): { main: string; extra: string; other: string } {
+    const base = realpathSync.native(mkdtempSync(join(outsideTempWorkspaceParent(), '.dsh-create-roots-')))
+    onTestFinished(() => { rmSync(base, { recursive: true, force: true }) })
+    const [main, extra, other] = ['main', 'extra', 'other'].map((name) => {
+      const dir = join(base, name)
+      mkdirSync(dir)
+      return dir
+    }) as [string, string, string]
+    return { main, extra, other }
+  }
+
+  async function rootsContext(): Promise<Context> {
+    const ctx = await baseContext()
+    ctx.provide('workspaceRegistry', { get: () => undefined, list: () => [], archivedSessionIds: [] } as never)
+    await ctx.plugin(LocalFileSystem)
+    await ctx.plugin(SandboxPolicyService, { mode: 'workspace-write' })
+    return ctx
+  }
+
+  it('starts the Session with the admitted roots and reports the refused ones', async () => {
+    const { main, extra } = directories()
+    const ctx = await rootsContext()
+    const controller = new SessionCommandController(ctx, controllerAgents(ctx, { createSession: publishedSession(ctx, SessionId('rooted')) }), main)
+    const missing = join(main, '..', 'missing')
+
+    const created = await controller.create({ additionalRoots: [extra, missing, main] })
+
+    expect(created).toEqual({ sessionId: 'rooted', rejectedAdditionalRoots: [missing, main] })
+    const session = ctx.sessions.get(SessionId('rooted'))
+    if (session === undefined) throw new Error('session was not published')
+    expect(ctx.sandboxPolicy.additionalRootsOf(session)).toEqual([extra])
+    await ctx.fiber.dispose()
+  })
+
+  it('clears a reused blank Session\'s roots when the request names none, and logs nothing for a fresh one', async () => {
+    const { main, extra } = directories()
+    const ctx = await rootsContext()
+    const reused = ctx.sessions.create(SessionId('reused'), { meta: { cwd: main } })
+    reused.append('sandbox/additional-roots', { roots: [extra as AdditionalRoot] })
+    const createSession = vi.fn<ApiSessionAgentController['createSession']>()
+      .mockResolvedValueOnce({ agent: { id: reused.id, session: reused, status: 'idle', ctx } as Agent, agentPreset: undefined })
+      .mockImplementationOnce(publishedSession(ctx, SessionId('fresh')))
+    const controller = new SessionCommandController(ctx, controllerAgents(ctx, { createSession }), main)
+
+    expect(await controller.create({})).toEqual({ sessionId: 'reused' })
+    expect(ctx.sandboxPolicy.additionalRootsOf(reused)).toEqual([])
+    expect(reused.snapshotEvents().filter(event => event.type === 'sandbox/additional-roots')).toHaveLength(2)
+
+    await controller.create({})
+    expect(ctx.sessions.get(SessionId('fresh'))?.snapshotEvents().some(event => event.type === 'sandbox/additional-roots')).toBe(false)
+    await ctx.fiber.dispose()
+  })
+
+  it('reports a published Session whose roots could not be applied', async () => {
+    const ctx = await baseContext()
+    ctx.provide('workspaceRegistry', { get: () => undefined, list: () => [], archivedSessionIds: [] } as never)
+    await ctx.plugin(SandboxPolicyService, {})
+    const controller = new SessionCommandController(ctx, controllerAgents(ctx, { createSession: publishedSession(ctx, SessionId('unapplied')) }), '/default')
+    await expect(controller.create({ additionalRoots: ['/extra'] })).rejects.toMatchObject({
+      code: 'session/additional-roots-failed',
+      details: { sessionId: 'unapplied' },
+    })
+    await ctx.fiber.dispose()
+  })
+
+  it('rejects requested roots before creation when no sandbox policy is composed', async () => {
+    const ctx = await baseContext()
+    ctx.provide('workspaceRegistry', { get: () => undefined, list: () => [], archivedSessionIds: [] } as never)
+    const createSession = vi.fn(publishedSession(ctx, SessionId('never')))
+    const controller = new SessionCommandController(ctx, controllerAgents(ctx, { createSession }), '/default')
+    await expectFailure(controller.create({ additionalRoots: ['/extra'] }), 'gateway/bad-request')
+    expect(createSession).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
+
+  it('carries the source roots into a fork through the seed', async () => {
+    const ctx = await baseContext()
+    ctx.provide('workspaceRegistry', { list: () => [] } as never)
+    const source = ctx.sessions.create(SessionId('roots-source'), { meta: { cwd: '/workspace' } })
+    source.append('sandbox/additional-roots', { roots: ['/extra' as AdditionalRoot] })
+    source.append('turn/start', { turn: 1 })
+    source.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'work' }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    source.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    const create = vi.spyOn(ctx.agents, 'create').mockImplementation(
+      (options: CreateAgentOptions) => Promise.resolve(resolvedHandle(ctx, options.sessionId)),
+    )
+    const controller = new SessionCommandController(ctx, controllerAgents(ctx), '/default')
+
+    await controller.fork({ sessionId: source.id })
+    expect(create.mock.calls[0]?.[0].seed?.filter(event => event.type === 'sandbox/additional-roots'))
+      .toMatchObject([{ data: { roots: ['/extra'] } }])
+    await ctx.fiber.dispose()
+  })
 })
 
 function completedSession(

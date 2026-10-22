@@ -37,6 +37,7 @@ describe.skipIf(process.platform !== 'darwin')('SSH helper inspector signal hard
       expect((await replies.next()).value).toBe('ready')
       const signal = await ctx.sandbox.confine([process.execPath, '-e', `process.kill(${String(child.pid)}, 'SIGUSR1')`], {
         mode: 'read-only', workspaceRoot: root,
+        additionalRoots: [],
       })
       const sender = spawnSync(signal.argv[0]!, signal.argv.slice(1), { cwd: root, env: {}, encoding: 'utf8', timeout: 3000 })
       expect(sender.error).toBeUndefined()

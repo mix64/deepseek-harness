@@ -56,7 +56,7 @@ The mode names the file effects a command may perform; enforcement completeness 
 | Mode | Effect |
 |---|---|
 | `read-only` | Denies writes except required sinks such as `/dev/null` |
-| `workspace-write` | Allows writes under the workspace root, explicitly configured additional roots, and a backend-defined temp area |
+| `workspace-write` | Allows writes under the workspace roots (the main root, explicitly configured additional roots, and the session's additional directories) and a backend-defined temp area |
 | `danger-full-access` | Bypasses confinement; the consumer spawns its original argv |
 
 Enforcement is reported per call: `full` means the backend governs every promised file effect, while `partial` means an active backend or older kernel ABI governs only a subset — the Windows ACL rung and older Landlock ABIs are the current partial cases, so a consumer that requires the absolute boundary can reject or surface them.
@@ -92,7 +92,7 @@ This section explains the design decisions behind the contract and points at the
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: `SandboxProvider` service, mode/enforcement/policy types, fail-closed error |
 | [`src/escalation.ts`](src/escalation.ts) | Escalation vocabulary: wider-mode ladder, argument validation, denial and hint markers, approval choreography |
-| [`src/roots.ts`](src/roots.ts) | Shared workspace/extra-root validation and backend-specific temporary-area derivation |
+| [`src/roots.ts`](src/roots.ts) | Workspace-root validation, admission, and derivation shared by every backend, the policy owner, and the in-process fs fence |
 
 ### Escalation choreography
 
@@ -100,7 +100,7 @@ The ladder is a closed table — `read-only` may escalate to `workspace-write` o
 
 ### Writable roots
 
-`workspaceWritableRoots` derives the workspace and explicit extra directories for bwrap and Landlock. `writableRoots` adds the host temporary areas for Seatbelt and the in-process filesystem fence. Both deduplicate roots and reject extra paths that are missing, are not directories, or resolve through symlinks. See the [mode definitions](../../../docs/subsystems/sandbox.md).
+`workspace-write` means "the workspace roots plus the host temp areas". `workspaceRoots` derives the roots canonically, main root first. Under `workspace-write` it adds the explicit extra directories and rejects one that is missing, is not a directory, or resolves through a symlink. It then keeps each session additional root that is an existing directory still passing `checkAdditionalRoot` against the roots kept before it and the temp areas, so a session root that disappeared or now overlaps grants nothing. `workspaceWritableRoots` returns those roots only under `workspace-write`; bwrap and Landlock bind every entry, and the Windows ACL backend grants each one its own capability. `writableRoots` adds the temp areas and deduplicates, so the Seatbelt profile and the in-process fs fence grant exactly the same roots. `checkAdditionalRoot` is also the admission rule the policy owner applies when a directory is added, and `sameSandboxPolicy` compares mode, roots in order, and session. See the [mode definitions](../../../docs/subsystems/sandbox.md).
 
 </details>
 
@@ -115,7 +115,7 @@ Start with the subsystem reference for the exhaustive contract, then the backend
 - [The historical subprocess sandbox decision](../../../.agents/notes/archived/feature/2026-07-06-sandbox.md) — capability boundary, escalation design, and deferred phases.
 - [Local sandbox backends](../sandbox-local/README.md) — the per-platform runners behind `ctx.sandbox`.
 - [Bash sandbox executor](../../shell/bash-sandbox/README.md) — the confined bash consumer.
-- [Sandbox policy package](../sandbox-policy/README.md) — where the per-call mode and workspace root come from.
+- [Sandbox policy package](../sandbox-policy/README.md) — where the per-call mode and workspace roots come from.
 
 -----
 

@@ -142,7 +142,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
   } as never)
   ctx.provide('sessions', {
     list: { getSnapshot: () => sessionSnapshot, subscribe },
-    create: vi.fn(async () => 'created' as never),
+    create: vi.fn(async () => ({ sessionId: 'created' as never, rejectedAdditionalRoots: [] })),
     retain,
     using,
     search,
@@ -331,7 +331,7 @@ describe('ui-workspace apply', () => {
     expect(rowToastEntry.store).toBeUndefined()
     expect(b.slots.entries('workspace.toast').map(row => row.options.key)).toEqual([
       'sessionIdCopied', 'sessionIdCopyFailed', 'pinFailed', 'unpinFailed', 'archivedNotOpenable',
-      'defaultWorkspaceFailed', 'shortcutForkFailed', 'createFailed', 'forkRequiresOpen', 'archived', 'stoppedAndArchived',
+      'defaultWorkspaceFailed', 'shortcutForkFailed', 'createFailed', 'rootsNotCarried', 'forkRequiresOpen', 'archived', 'stoppedAndArchived',
     ])
     for (const registration of b.slots.entries('workspace.toast')) {
       expect(registration.locale).toBe('workspace')

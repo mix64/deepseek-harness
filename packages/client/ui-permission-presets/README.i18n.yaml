@@ -9,8 +9,8 @@
   en: 8320c8f78c0809ce
   zh: 74b8ded4da556e81
 /deepseek-ai-dsh-client-ui-permission-presets/summary:
-  en: 2591adc4721c0564
-  zh: 558413d3f819d3af
+  en: 1117cee0517c09df
+  zh: 3831f9092972a1f1
 /deepseek-ai-dsh-client-ui-permission-presets/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -20,24 +20,27 @@
 /deepseek-ai-dsh-client-ui-permission-presets/use-this-package/the-picker:
   en: 4e5a070ad4321548
   zh: 010063336bd2b8df
+/deepseek-ai-dsh-client-ui-permission-presets/use-this-package/the-directories-control:
+  en: 7e573741be8ad5d6
+  zh: 67091215d3664d30
 /deepseek-ai-dsh-client-ui-permission-presets/use-this-package/the-settings-row:
   en: 5067f6aa12496225
   zh: cfa6796684f97535
 /deepseek-ai-dsh-client-ui-permission-presets/understand-the-implementation:
-  en: 4089d5bebf3e8bf0
-  zh: 22071e6cd6de0ffc
+  en: 20e057ff8a96270e
+  zh: f28cd4d0b983f69c
 /deepseek-ai-dsh-client-ui-permission-presets/further-exploration:
-  en: 9bdbdea03d0e2a96
-  zh: cc3bf480a0706ef2
+  en: f4b689784082bd12
+  zh: 0041fc23971de4e7
 /deepseek-ai-dsh-client-ui-permission-presets/model-experience:
-  en: 114f37b90a58cffa
-  zh: dc99a48a72c975e6
+  en: 5f17e195a4234485
+  zh: 5faa3996f5bc57b8
 /deepseek-ai-dsh-client-ui-permission-presets/model-experience/kv-cache-effect:
   en: f25206808c8d84c5
   zh: 4fcbc876952d240d
 /deepseek-ai-dsh-client-ui-permission-presets/known-limitations-and-deferred-work:
-  en: 08cdc0ad196d12c1
-  zh: 157bee9d5b29f470
+  en: 3f74624f921b3be9
+  zh: c18458fdbff8ca0d
 /deepseek-ai-dsh-client-ui-permission-presets/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

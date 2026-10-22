@@ -20,7 +20,11 @@
  * leaves the surface with no add affordance at all.
  * Two holes exist because the two menu surfaces are independent slot entries
  * and a hole has exactly one declaring entry — they carry the same owner
- * contract and the same occupant.
+ * contract and the same occupant. A third hole with the same owner contract,
+ * `conversation.input.directories.directoryFlow`, is declared by the
+ * composer's session-directories control (ui-permission-presets); there the
+ * owner adopts a picked path as an additional writable directory of the
+ * current Session instead of as a Workspace.
  *
  * WorkspaceBrowser also declares the two **Session row action lists**: every
  * row of a Session's "..." menu is an entry of
@@ -64,7 +68,10 @@ import type { createWorkspaceViewStore } from '../stores.ts'
 export interface DirectoryFlowOwnerProps {
   /** True while a picking interaction is requested; flipping back to false withdraws the request. */
   open: boolean
-  /** True while the owner adopts a picked path (`createWorkspace` in flight); occupants disable their commit affordances. */
+  /**
+   * True while the owner adopts a picked path (creates the Workspace or adds the Session directory);
+   * occupants disable their commit affordances.
+   */
   busy: boolean
   /** The operator picked a directory (absolute host path); the owner adopts it. */
   onPicked: (path: string) => void
@@ -125,6 +132,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    /**
+     * Directory-flow hole under the composer's session-directories control
+     * (declared by ui-permission-presets' `conversation.input.left` entry).
+     * `busy` is true while the picked path is being added to the Session.
+     */
+    'conversation.input.directories.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /**
      * Leading decoration of one Session row, in the 16px cell before the title
      * that the row's own state dot otherwise occupies. A higher-priority state
@@ -206,13 +219,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** The two directory-flow holes; a flow package's client half registers its one component into both. */
+/** The directory-flow holes; a flow package's client half registers its one component into each. */
 export type DirectoryFlowSlotName =
   | 'conversation.hero.workspace.directoryFlow'
   | 'sidebar.workspaces.directoryFlow'
+  | 'conversation.input.directories.directoryFlow'
 
 /**
- * Directory-picking share both trigger surfaces consume. Occupancy rides the
+ * Directory-picking share every trigger surface consumes. Occupancy rides the
  * inject face's reserved `hooks` compartment: the renderer binds the source
  * into the `useDirectoryFlow` selector hook, so an empty hole hides the
  * "Add workspace…" entry reactively and the surface withdraws an open
@@ -325,6 +339,8 @@ export type RowToast =
    * a report can be searched by it — and any other failure's own message.
    */
   | { kind: 'createFailed'; message: string }
+  /** A new Session started without these of the requested additional directories, as requested. */
+  | { kind: 'rootsNotCarried'; paths: readonly string[] }
 
 /** The notice on display; `seq` keys remounts so a repeated notice restarts its hold. */
 export type RowToastState = RowToast & { seq: number }

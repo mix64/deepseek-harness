@@ -541,7 +541,7 @@ it.each([true, false])('classifies confined process spawn failure with runner ev
     throw Object.assign(new Error('spawn failed'), { code: 'ENOENT', path: runnerFailure ? runner : '/other', syscall: `spawn ${runner}` })
   })
   try {
-    const result = await h.start({ ...request, sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd() } }, NO_INITIAL_FRAME)
+    const result = await h.start({ ...request, sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd(), additionalRoots: [] } }, NO_INITIAL_FRAME)
     expect(result.error?.kind).toBe(runnerFailure ? 'sandbox-unavailable' : 'worker-exit')
     expect(result.sandbox?.enforcement).toBe('partial')
   } finally { confine.mockRestore() }
@@ -553,7 +553,7 @@ it('reports a sandbox runner refusal before the REPL is ready', async () => {
     argv: ['sandbox-runner'], enforcement: 'full', denialSignatures: [],
     runnerFailureRules: [{ allowedExitCodes: [127], fatalSignatures: ['sandbox runner rejected'] }],
   })
-  const pending = h.start({ ...request, sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd() } }, NO_INITIAL_FRAME)
+  const pending = h.start({ ...request, sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd(), additionalRoots: [] } }, NO_INITIAL_FRAME)
   try {
     await vi.waitFor(() => { expect(h.spawn).toHaveBeenCalledOnce() })
     h.stdout.end()

@@ -15,6 +15,7 @@ import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-test
 import SandboxedFileSystem from '@deepseek-ai/dsh-fs-sandbox'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import SandboxPolicyService, { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import type { AdditionalRoot } from '@deepseek-ai/dsh-sandbox-policy'
 import { Session, SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
@@ -127,6 +128,30 @@ describe('in-process policy inheritance', () => {
         { data: { preset: seedPreset } },
         { data: { preset } },
       ])
+    } finally {
+      await run.dispose()
+    }
+  })
+
+  it('seeds the parent additional roots into the child and omits the event for a parent without any', async () => {
+    const { ctx, parent } = await setupWalled([textResponse('child done'), textResponse('child done')])
+    const plain = await startPreparedActivation(spawnRequest(parent), {})
+    try {
+      await plain.result
+      expect(plain.localAgent.session.snapshotEvents().some(event => event.type === 'sandbox/additional-roots')).toBe(false)
+    } finally {
+      await plain.dispose()
+    }
+
+    const roots = ['/extra/a' as AdditionalRoot, '/extra/b' as AdditionalRoot]
+    parent.session.append('sandbox/additional-roots', { roots })
+    const run = await startPreparedActivation(spawnRequest(parent), {})
+    try {
+      await run.result
+      const child = run.localAgent
+      expect(child.session.snapshotEvents().filter(event => event.type === 'sandbox/additional-roots'))
+        .toMatchObject([{ data: { roots, source: 'delegation' } }])
+      expect(ctx.sandboxPolicy.resolve({ session: child.session }).additionalRoots).toEqual(roots)
     } finally {
       await run.dispose()
     }

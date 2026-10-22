@@ -94,7 +94,7 @@ describe('workspace-write containment', () => {
   it('rejects an extra directory replaced by a symlink to an ungranted sibling', async () => {
     const extra = join(workspace, 'extra')
     await mkdir(extra)
-    const policy = { mode: 'workspace-write' as const, workspaceRoot: workspace, additionalWritableRoots: [extra] }
+    const policy = { mode: 'workspace-write' as const, workspaceRoot: workspace, additionalRoots: [], additionalWritableRoots: [extra] }
     await fs.writeText(await target(join(extra, 'before.txt')), 'allowed', undefined, undefined, policy)
     await rm(extra, { recursive: true })
     await symlink(outside, extra, 'dir')
@@ -218,17 +218,31 @@ describe('the per-call policy override (escalation)', () => {
     await boot('read-only')
     const path = join(workspace, 'escalated.txt')
     // Default read-only would deny; the per-call workspace-write policy allows it (contained).
-    await fs.writeText(await target(path), 'granted', undefined, undefined, { mode: 'workspace-write', workspaceRoot: workspace })
+    await fs.writeText(await target(path), 'granted', undefined, undefined, { mode: 'workspace-write', workspaceRoot: workspace, additionalRoots: [] })
     expect(await readFile(path, 'utf8')).toBe('granted')
     // A neighboring plain call still runs under the read-only default.
     await expect(fs.writeText(await target(join(workspace, 'plain.txt')), 'x'))
       .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
   })
 
+  it('a workspace-write stamp with an additional root contains writes to the main and additional roots only', async () => {
+    await boot('read-only')
+    const extra = join(base, 'extra')
+    await mkdir(extra)
+    const policy = { mode: 'workspace-write' as const, workspaceRoot: workspace, additionalRoots: [extra] }
+    await fs.writeText(await target(join(workspace, 'main.txt')), 'main', undefined, undefined, policy)
+    await fs.writeText(await target(join(extra, 'extra.txt')), 'extra', undefined, undefined, policy)
+    expect(await readFile(join(extra, 'extra.txt'), 'utf8')).toBe('extra')
+    const sibling = join(outside, 'sibling.txt')
+    await expect(fs.writeText(await target(sibling), 'x', undefined, undefined, policy))
+      .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    expect(existsSync(sibling)).toBe(false)
+  })
+
   it('a danger-full-access stamp bypasses the fence for that call', async () => {
     await boot('read-only')
     const path = join(outside, 'granted-full.txt')
-    await fs.writeText(await target(path), 'full', undefined, undefined, { mode: 'danger-full-access', workspaceRoot: workspace })
+    await fs.writeText(await target(path), 'full', undefined, undefined, { mode: 'danger-full-access', workspaceRoot: workspace, additionalRoots: [] })
     expect(await readFile(path, 'utf8')).toBe('full')
   })
 })

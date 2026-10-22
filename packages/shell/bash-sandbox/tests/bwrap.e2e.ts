@@ -34,7 +34,7 @@ function start(x: { execute(spec: ShellExecSpec): Promise<ShellExecution> }, spe
  * intentional because bwrap replaces `/tmp`, which cannot prove the workspace-root boundary.
  */
 
-const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
+const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/', additionalRoots: [] }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
 const bwrapUsable = probe.status === 0
 
 let ctx: Context | undefined
@@ -105,7 +105,7 @@ describe.skipIf(!bwrapUsable)('bash-sandbox: real bwrap confinement through ctx.
     expect(strict.exitCode).not.toBe(0)
     expect(strict.sandbox).toEqual({ mode: 'read-only', denied: true, enforcement: 'full' })
     expect(existsSync(join(workdir, 'escalated.txt'))).toBe(false)
-    const retried = await run(bash, bash.resolve({ command, sandboxPolicy: { mode: 'workspace-write', workspaceRoot: workdir } }))
+    const retried = await run(bash, bash.resolve({ command, sandboxPolicy: { mode: 'workspace-write', workspaceRoot: workdir, additionalRoots: [] } }))
     expect(retried.exitCode).toBe(0)
     expect(retried.sandbox).toEqual({ mode: 'workspace-write', denied: false, enforcement: 'full' })
     expect(readFileSync(join(workdir, 'escalated.txt'), 'utf8')).toBe('escalated')

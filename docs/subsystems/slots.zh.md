@@ -173,6 +173,8 @@ Factory: conversation.content [ConversationContent]
 │  ├─ conversation.input.overlay
 │  ├─ conversation.composer.dock
 │  ├─ conversation.input.left
+│  │  └─ id=session-directories [SessionDirectories]
+│  │     └─ conversation.input.directories.directoryFlow
 │  └─ conversation.input.right
 ├─ conversation.input.dock
 │  └─ id=queue [QueueDock]

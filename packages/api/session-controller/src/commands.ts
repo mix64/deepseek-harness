@@ -23,6 +23,7 @@ import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import {
   ApiSessionAgentController,
   ApiSessionCwdConflict,
@@ -98,12 +99,18 @@ export class SessionCommandController {
   /**
    * Create one ordinary Session for a new conversation, reusing the named
    * blank Session while it is an unarchived member of the requested Workspace.
-   * @param request - optional blank Session to reuse, location, and Agent preset.
-   * @returns the created or reused Session identity and its preset when configured.
+   * The Session's additional roots are then replaced by the admitted subset of
+   * `request.additionalRoots` (empty when omitted).
+   * @param request - optional blank Session to reuse, location, Agent preset, and additional roots.
+   * @returns the created or reused Session identity, its preset when configured, and refused roots.
    */
   async create(request: SessionCreateRequest): Promise<SessionCreateValue> {
     if (request.workspaceId !== undefined && request.cwd !== undefined) {
       throw new RemoteError('gateway/bad-request', 'session.create accepts workspaceId or cwd, not both', {})
+    }
+    const sandboxPolicy = this.ctx.get('sandboxPolicy')
+    if (sandboxPolicy === undefined && (request.additionalRoots?.length ?? 0) > 0) {
+      throw new RemoteError('gateway/bad-request', 'session.create additionalRoots requires a sandbox policy service', {})
     }
     let workspace: Workspace | undefined
     if (request.workspaceId !== undefined) {
@@ -139,7 +146,27 @@ export class SessionCommandController {
         )
       }
     }
-    return { sessionId, ...(created.agentPreset === undefined ? {} : { agentPreset: created.agentPreset }) }
+    let rejected: string[] = []
+    if (sandboxPolicy !== undefined) {
+      const session = created.agent.session
+      const paths = request.additionalRoots ?? []
+      if (paths.length > 0 || sandboxPolicy.additionalRootsOf(session).length > 0) {
+        try {
+          rejected = (await sandboxPolicy.editAdditionalRoots(session, { kind: 'replace', paths })).refused.map(refusal => refusal.path)
+        } catch (error) {
+          throw new RemoteError(
+            'session/additional-roots-failed',
+            `session "${sessionId}" was created but its additional roots could not be applied: ${String(error)}`,
+            { sessionId },
+          )
+        }
+      }
+    }
+    return {
+      sessionId,
+      ...(created.agentPreset === undefined ? {} : { agentPreset: created.agentPreset }),
+      ...(rejected.length === 0 ? {} : { rejectedAdditionalRoots: rejected }),
+    }
   }
 
   /**

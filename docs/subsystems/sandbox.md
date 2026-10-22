@@ -8,7 +8,7 @@ Source: [`packages/sandbox/sandbox/src/index.ts`](../../packages/sandbox/sandbox
 
 ## Modes and enforcement
 
-`SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps; `workspace-write` permits writes under the workspace root, explicit extra directories, and the backend's promised temp area; `danger-full-access` bypasses confinement. Network and process visibility are outside this vocabulary.
+`SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps; `workspace-write` permits writes under the workspace roots (the main root, explicit extra directories, and the session's additional roots) and the backend's promised temp area; `danger-full-access` bypasses confinement. Network and process visibility are outside this vocabulary.
 
 ```ts type-equiv
 /**
@@ -40,18 +40,20 @@ type SandboxEnforcement = 'full' | 'partial'
 
 ## Per-call policy
 
-The complete execution policy is resolved and carried per capability call. It includes `danger-full-access` so a consumer can resolve policy once before deciding whether to bypass confinement. Normal tool calls derive `workspaceRoot` from the calling session's immutable cwd; deployment configuration supplies the agentless fallback and explicit additional write grants. The resolver preserves absolute execution-world spelling. Enforcing providers canonicalize the root where the files exist, so a cwd containing `symlink/..` identifies the directory where the paired subprocess provider actually runs.
+The complete execution policy is resolved and carried per capability call. It includes `danger-full-access` so a consumer can resolve policy once before deciding whether to bypass confinement. Normal tool calls derive `workspaceRoot` from the calling session's immutable cwd; deployment configuration supplies the agentless fallback and explicit extra write grants (`additionalWritableRoots`). `additionalRoots` carries the session's [additional roots](../glossary.md#additional-root) in admission order; agentless calls carry none. The resolver preserves absolute execution-world spelling. Enforcing providers canonicalize the roots where the files exist, so a cwd containing `symlink/..` identifies the directory where the paired subprocess provider actually runs.
+
+The workspace roots a confined execution may write under are derived in the execution world by `workspaceRoots(policy)`: the canonical main root first, kept even when missing; under `workspace-write`, the explicit extra directories, each of which must be an existing physical directory or the call fails; then each additional root that is an existing directory and still passes `checkAdditionalRoot` against the roots kept before it and the temp areas. `checkAdditionalRoot` rejects a filesystem root, the main root, a directory inside or containing the main root, one overlapping another root or a temp area, and one past the session limit; Windows paths compare case-insensitively. `workspaceWritableRoots(policy)` and `writableRoots(policy)` are empty outside `workspace-write`; the latter adds the temp areas. The derivation of session roots only narrows, so a session root that disappears or comes to overlap grants nothing until it is valid again. [`roots.ts`](../../packages/sandbox/sandbox/src/roots.ts) owns these functions and `sameSandboxPolicy`, the equality consumers use to decide whether a held process or runtime still matches a policy.
 
 ```ts type-equiv
 /**
- * The complete file-effect policy resolved for one capability call. The root
- * is carried even under modes that do not consume it so callers can resolve
+ * The complete file-effect policy resolved for one capability call. The roots
+ * are carried even under modes that do not consume them so callers can resolve
  * policy once before choosing the enforcement path.
  */
 interface SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: SandboxMode
-  /** Absolute root directory `workspace-write` may write under. */
+  /** Absolute main root directory `workspace-write` may write under. */
   workspaceRoot: string
   /**
    * Extra physical absolute directories `workspace-write` may also write under.
@@ -60,6 +62,13 @@ interface SandboxExecutionPolicy {
    * These grant nothing under `read-only` or `danger-full-access`.
    */
   additionalWritableRoots?: readonly string[]
+  /**
+   * Absolute session directories `workspace-write` may also write under, in
+   * admission order. Enforcement derives the effective list through
+   * `workspaceRoots`, which drops entries that are missing or overlap the
+   * main root, an explicit extra directory, an earlier root, or a temp area.
+   */
+  additionalRoots: readonly string[]
   /**
    * Opaque identity of the calling session (the branded `dsh-session`
    * SessionId). Backends key per-session state off it (e.g. windows-acl gives
@@ -206,13 +215,53 @@ The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mo
 /**
  * Resolve the complete policy for one capability call. An approved explicit
  * mode outranks the session's last `sandbox/mode` event, which outranks the
- * deployment default. A session cwd is its workspace-write boundary; the
+ * deployment default. A session cwd is its workspace-write main root; the
  * configured root is the fallback for agentless calls and sessions without a
- * cwd.
+ * cwd. The session's last `sandbox/additional-roots` list supplies the
+ * additional roots; agentless calls have none.
  * @param request - optional session and approved mode override.
- * @returns the fully resolved per-call mode and absolute workspace root.
+ * @returns the fully resolved per-call mode, absolute main root, and additional roots.
  */
 resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy
+
+/**
+ * Read the session's additional roots.
+ * @param session - session whose log supplies the list.
+ * @returns the last logged list, empty without one.
+ */
+additionalRootsOf(session: Session): AdditionalRoot[]
+
+/**
+ * THE validated write path for a session's additional roots. Edits of one
+ * session run one at a time, each against the list the previous one left.
+ * Every requested path is resolved and inspected through `ctx.fs` (the
+ * execution world), relative paths against the session's main root, then
+ * planned by {@link planRootAdmission} or {@link planRootRemoval}. Each newly
+ * admitted root is preflighted through `ctx.sandbox.confine()` under the
+ * prospective workspace-write policy, so a backend that grants per root
+ * (Windows ACL) materializes the grant now and a refusal is reported now;
+ * compositions without a sandbox provider skip the preflight. The edit
+ * appends at most one `sandbox/additional-roots` event, and none when the
+ * list is unchanged.
+ * @param session - the session whose list is edited.
+ * @param edit - the requested change.
+ * @param signal - cancellation of the resolution and preflight; an aborted edit appends nothing.
+ * @returns the resulting list, whether it changed, and the refused paths.
+ * @throws when no `ctx.fs` provider is mounted, on cancellation, or on an
+ *   execution-world I/O failure other than a missing path.
+ */
+editAdditionalRoots(session: Session, edit: AdditionalRootsEdit, signal?: AbortSignal): Promise<AdditionalRootsEditResult>
+
+/**
+ * The policy a session resolves after one event commits, given the policy
+ * it resolved before. Consumers that hold a process, runtime, or call open
+ * under a resolved policy compare the successor with `sameSandboxPolicy` to
+ * decide whether that resource is still valid.
+ * @param before - the policy resolved before the event.
+ * @param event - the committed or committing session event.
+ * @returns the next policy, or `undefined` when the event cannot change the policy.
+ */
+successor(before: SandboxExecutionPolicy, event: SessionEvent): SandboxExecutionPolicy | undefined
 
 /**
  * Read the session override without applying the deployment default.
@@ -222,7 +271,7 @@ resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy
 overrideOf(session: Session): SandboxMode | undefined
 ```
 
-Types: [Session](session.md)
+Types: [Session](session.md) · [SessionEvent](session.md)
 
 Source: [`packages/sandbox/sandbox-policy/src/index.ts`](../../packages/sandbox/sandbox-policy/src/index.ts)
 <!-- END GENERATED cordis-surface -->

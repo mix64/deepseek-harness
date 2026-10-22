@@ -25,6 +25,7 @@ export const policySchema = z.object({
   mode: z.enum(['read-only', 'workspace-write', 'danger-full-access']),
   workspaceRoot: remotePath,
   additionalWritableRoots: z.array(remotePath).optional(),
+  additionalRoots: z.array(remotePath),
   sessionId: z.string().optional(),
 }).strict()
 /** Complete directory entries. */

@@ -5,7 +5,7 @@ import { isAbsolute } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { PtcRunRequest, PtcRunSpec, PtcRunResult, PtcRunSandbox, PtcRunFailure, PtcBindingNamespace, PtcJsonValue } from '@deepseek-ai/dsh-ptc-runtime'
 import { clampTimeout } from '@deepseek-ai/dsh-timeout'
-import { SandboxUnavailableError, classifyRunnerFailure, isRunnerSpawnFailure } from '@deepseek-ai/dsh-sandbox'
+import { SandboxUnavailableError, classifyRunnerFailure, isRunnerSpawnFailure, sameSandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
 import type { BirpcReturn } from 'birpc'
@@ -24,19 +24,6 @@ const messageOf = (error: unknown): string => error instanceof Error ? error.mes
 
 function persistentOutput(maxBytes: number): OutputLedger {
   return new OutputLedger(maxBytes, `retained variables were cleared; outer output exceeded ${maxBytes} bytes`)
-}
-
-/**
- * Compare requested extra grants without resolving paths in another execution world.
- * @param left - one policy's additional roots.
- * @param right - the other policy's additional roots.
- * @returns whether both contain the same paths, ignoring order and duplicates.
- */
-function sameAdditionalRoots(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
-  const effective = (roots: readonly string[] | undefined): string[] => [...new Set(roots ?? [])].sort()
-  const a = effective(left)
-  const b = effective(right)
-  return a.length === b.length && a.every((root, index) => root === b[index])
 }
 
 interface Evaluation {
@@ -325,10 +312,7 @@ export class InMemoryExecution {
     const bindings = validateBindings(spec)
     let kernel = spec.stateOwner === undefined ? undefined : this.owners.get(spec.stateOwner)
     kernel?.assertIdle()
-    if (kernel && !kernel.closed && (kernel.policy.mode !== spec.sandboxPolicy.mode
-      || kernel.policy.workspaceRoot !== spec.sandboxPolicy.workspaceRoot
-      || kernel.policy.sessionId !== spec.sandboxPolicy.sessionId
-      || !sameAdditionalRoots(kernel.policy.additionalWritableRoots, spec.sandboxPolicy.additionalWritableRoots))) {
+    if (kernel && !kernel.closed && !sameSandboxPolicy(kernel.policy, spec.sandboxPolicy)) {
       throw new Error('persistent PTC: release the retained environment before changing its sandbox policy')
     }
     let code: string

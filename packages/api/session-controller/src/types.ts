@@ -188,6 +188,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/agent-busy': { readonly reason: string }
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }
+    'session/additional-roots-failed': { readonly sessionId: SessionId }
     'agent-preset/conflict': {
       readonly sessionId: SessionId
       readonly requestedPreset: string
@@ -265,6 +266,13 @@ export interface SessionCreateRequest {
   readonly sessionId?: SessionId
   /** Preset the Session runs, replacing a reused Session's recorded preset; the configured default when omitted. */
   readonly agentPreset?: string
+  /**
+   * Additional writable directories the Session starts with, typically the
+   * current Session's list when staying in the same Workspace. The Host
+   * re-validates each path; the Session's list becomes exactly the admitted
+   * paths, and empty when omitted.
+   */
+  readonly additionalRoots?: readonly string[]
 }
 
 /** Session creation response value. */
@@ -273,6 +281,8 @@ export interface SessionCreateValue {
   readonly sessionId: SessionId
   /** Preset the Session runs, when the deployment composes a preset roster. */
   readonly agentPreset?: string
+  /** Requested additional roots the Host refused, as requested; omitted when every path was admitted. */
+  readonly rejectedAdditionalRoots?: readonly string[]
 }
 
 /** Session model-selection request. */
