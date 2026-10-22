@@ -591,6 +591,114 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 30_000)
 
+  it('owner-rights regression: the OWNER RIGHTS relabel ACE gives the confined owner no DACL, owner, or label edit and no escape', () => {
+    // A root whose DACL grants the owner only Modify takes the inheritable
+    // OWNER RIGHTS ACE (READ_CONTROL | WRITE_DAC | WRITE_OWNER) on grant. The
+    // confined child runs as the same user and owns what it creates, so the
+    // write-restricted pass must refuse every security-descriptor edit there,
+    // and on a sibling outside the granted roots.
+    const root = join(scratchRoot, 'owner-rights-root')
+    const sibling = join(scratchRoot, 'owner-rights-sibling')
+    mkdirSync(root)
+    mkdirSync(sibling)
+    const modifyOnly = spawnSync('icacls', [root, '/inheritance:r', '/grant:r', '*S-1-5-11:(OI)(CI)(M)', '*S-1-5-18:(OI)(CI)(F)'], { encoding: 'utf8' })
+    if (modifyOnly.status !== 0) throw new Error(`icacls Modify-only setup failed: ${modifyOnly.stdout}\n${modifyOnly.stderr}`)
+    const privateTemp = join(isolatedTemp, 'owner-rights-temp')
+    mkdirSync(privateTemp)
+    const grants = [
+      [AclWriteGrant.create(workspaceWriteSid(root)), root, true],
+      [AclWriteGrant.create(tempWriteSid(privateTemp)), privateTemp, false],
+    ] as const
+    for (const [grant, dir, standing] of grants) grant.add(dir, standing)
+    const ownFile = join(root, 'own.txt')
+    const ownDir = join(root, 'own-dir')
+    const hostSecurity = (path: string): string => {
+      const sddl = spawnSync(resolvePwshPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `(Get-Acl -LiteralPath '${path}').Sddl`], { encoding: 'utf8' })
+      const icacls = spawnSync('icacls', [path], { encoding: 'utf8' })
+      return `${sddl.stdout.trim()}\n${icacls.stdout}`
+    }
+    const probePath = join(scratchRoot, 'owner-rights-probe.ps1')
+    writeFileSync(probePath, `
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DshSd {
+  [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(string text, uint revision, out IntPtr descriptor, IntPtr size);
+  [DllImport("advapi32.dll", SetLastError = true)]
+  static extern bool GetSecurityDescriptorDacl(IntPtr descriptor, out bool present, out IntPtr acl, out bool defaulted);
+  [DllImport("advapi32.dll", SetLastError = true)]
+  static extern bool GetSecurityDescriptorSacl(IntPtr descriptor, out bool present, out IntPtr acl, out bool defaulted);
+  [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+  static extern uint GetNamedSecurityInfoW(string path, int type, uint info, out IntPtr owner, out IntPtr group, out IntPtr dacl, out IntPtr sacl, out IntPtr descriptor);
+  [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+  static extern uint SetNamedSecurityInfoW(string path, int type, uint info, IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+  static IntPtr Parse(string sddl) {
+    IntPtr descriptor;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, out descriptor, IntPtr.Zero)) throw new Exception("SDDL " + sddl);
+    return descriptor;
+  }
+  public static uint Dacl(string path) {
+    bool present, defaulted; IntPtr acl;
+    GetSecurityDescriptorDacl(Parse("D:(A;OICI;FA;;;WD)"), out present, out acl, out defaulted);
+    return SetNamedSecurityInfoW(path, 1, 0x4, IntPtr.Zero, IntPtr.Zero, acl, IntPtr.Zero);
+  }
+  public static uint Owner(string path) {
+    IntPtr owner, group, dacl, sacl, descriptor;
+    uint read = GetNamedSecurityInfoW(path, 1, 0x1, out owner, out group, out dacl, out sacl, out descriptor);
+    if (read != 0) return 1000000 + read;
+    return SetNamedSecurityInfoW(path, 1, 0x1, owner, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+  }
+  public static uint Label(string path) {
+    bool present, defaulted; IntPtr acl;
+    GetSecurityDescriptorSacl(Parse("S:(ML;;NW;;;LW)"), out present, out acl, out defaulted);
+    return SetNamedSecurityInfoW(path, 1, 0x10, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, acl);
+  }
+}
+'@
+function Report([string]$name, [uint32]$code) { if ($code -eq 0) { "$($name): OK" } else { "$($name): DENIED($code)" } }
+try { Set-Content -LiteralPath '${ownFile}' -Value ok; New-Item -ItemType Directory -Path '${ownDir}' | Out-Null; 'CREATE: OK' } catch { 'CREATE: DENIED' }
+foreach ($target in @(@('ROOT', '${root}'), @('OWN-FILE', '${ownFile}'), @('OWN-DIR', '${ownDir}'), @('SIBLING', '${sibling}'))) {
+  Report "$($target[0])-DACL" ([DshSd]::Dacl($target[1]))
+  Report "$($target[0])-OWNER" ([DshSd]::Owner($target[1]))
+  Report "$($target[0])-LABEL" ([DshSd]::Label($target[1]))
+}
+try { Set-Content -LiteralPath '${join(sibling, 'escape.txt')}' -Value escaped; 'ESCAPE-WRITE: OK (ESCAPE!)' } catch { 'ESCAPE-WRITE: DENIED' }
+`)
+    try {
+      const rootBefore = hostSecurity(root)
+      const siblingBefore = hostSecurity(sibling)
+      // The grant took the owner-rights path: the root now carries the explicit OWNER RIGHTS ACE.
+      expect(rootBefore).toContain(';;;OW)')
+      const result = runRunner(formatRunnerArgs(
+        { grants: 'caller', mode: 'workspace-write', writable: [{ dir: root, writeSid: workspaceWriteSid(root) }], temp: { dir: privateTemp, writeSid: tempWriteSid(privateTemp) } },
+        [resolvePwshPath(), '-NoLogo', '-NoProfile', '-NonInteractive', '-File', probePath],
+      ), 60_000)
+      expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).toBe(0)
+      expect(result.stdout).toContain('CREATE: OK')
+      for (const target of ['ROOT', 'OWN-FILE', 'OWN-DIR', 'SIBLING']) {
+        for (const edit of ['DACL', 'OWNER', 'LABEL']) {
+          expect(result.stdout, result.stdout).toMatch(new RegExp(`${target}-${edit}: DENIED\\(\\d+\\)`, 'u'))
+        }
+      }
+      expect(result.stdout).toContain('ESCAPE-WRITE: DENIED')
+      expect(existsSync(join(sibling, 'escape.txt'))).toBe(false)
+      // The child is the owner of what it created, and that object inherited the OWNER RIGHTS ACE.
+      const ownerOf = (path: string): string => spawnSync(resolvePwshPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `(Get-Acl -LiteralPath '${path}').Owner`], { encoding: 'utf8' }).stdout.trim()
+      expect(ownerOf(ownFile)).toBe(ownerOf(root))
+      expect(hostSecurity(ownFile)).toContain(';;;OW)')
+      expect(hostSecurity(root)).toBe(rootBefore)
+      expect(hostSecurity(sibling)).toBe(siblingBefore)
+    } finally {
+      for (const [grant] of grants) grant.dispose()
+      rmSync(root, { recursive: true, force: true })
+      rmSync(sibling, { recursive: true, force: true })
+      rmSync(privateTemp, { recursive: true, force: true })
+      rmSync(probePath, { force: true })
+    }
+  }, 90_000)
+
   it('a FullControl open inside a granted root still works for files (the deny inherits to containers only)', () => {
     // The ambient-delete deny is 0x40, a member of FILE_ALL_ACCESS: inheriting
     // it onto files would deny every GENERIC_ALL/FullControl open by the user,

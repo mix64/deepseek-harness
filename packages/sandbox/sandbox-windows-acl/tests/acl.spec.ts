@@ -27,6 +27,12 @@ const isWin32 = process.platform === 'win32'
 /** FILE_READ_DATA (winnt.h line ~5895): the harmless mask the explicit test ACE grants. */
 const FILE_READ_DATA = 0x0001
 
+/** The "Modify" file access mask (FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE). */
+const MODIFY_MASK = 0x001301BF
+
+/** SECURITY_INFORMATION flag that blocks DACL inheritance from the parent (winnt.h). */
+const PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
+
 /** koffi SID layout: revision@0, subAuthorityCount@1, identifierAuthority@2 (6 bytes, big-endian), subAuthority@8. */
 const SID_STRUCT = koffi.struct('DSH_ACL_SPEC_SID', {
   revision: 'uint8',
@@ -345,11 +351,14 @@ describe.skipIf(!isWin32)('ACL editing', () => {
     const apply = vi.spyOn(api, 'setNamedSecurityInfoW')
     try {
       grantWrite(api, dir, capabilitySid, lowSid, world)
-      expect(apply).toHaveBeenCalledTimes(1)
+      // One apply, or three when the temp root grants only Modify and the
+      // owner-rights grant precedes the retried apply.
+      const firstGrantApplies = apply.mock.calls.length
+      expect(firstGrantApplies).toBeGreaterThan(0)
       // The exact ACE, deny, and label now stand (the per-session grant
       // surviving from a previous server lifetime): the second grant is a read only.
       grantWrite(api, dir, capabilitySid, lowSid, world)
-      expect(apply).toHaveBeenCalledTimes(1)
+      expect(apply).toHaveBeenCalledTimes(firstGrantApplies)
       const aces = readDirectAces(api, dir)
       expect(aces.filter(ace => ace.sid === 'S-1-4-4242-2')).toHaveLength(1)
       expect(aces.filter(ace => ace.sid === 'S-1-1-0')).toHaveLength(1)
@@ -358,6 +367,46 @@ describe.skipIf(!isWin32)('ACL editing', () => {
       expect(readDirectAces(api, dir).some(ace => ace.sid === 'S-1-4-4242-2')).toBe(false)
     } finally {
       apply.mockRestore()
+      if (!isNullPtr(capabilitySid)) api.localFree(capabilitySid)
+      if (!isNullPtr(lowSid)) api.localFree(lowSid)
+      if (!isNullPtr(world)) api.localFree(world)
+    }
+  })
+
+  it('grantWrite labels a directory whose DACL grants the owner only Modify, through an inheritable OWNER RIGHTS grant', async () => {
+    const api = await win32()
+    const dir = scratch()
+    const childDir = join(dir, 'child')
+    const authenticatedUsers = sidFromString(api, 'S-1-5-11')
+    const capabilitySid = sidFromString(api, 'S-1-4-4242-31')
+    const lowSid = lowLabelSid(api)
+    const world = worldSid(api)
+    try {
+      // A protected DACL granting only Modify leaves the owner without
+      // WRITE_OWNER, which the Low label apply needs.
+      const newAclSlot = allocPtrSlot()
+      const mergeResult = api.setEntriesInAclW(1, buildExplicitAccess(authenticatedUsers, abi.GRANT_ACCESS, MODIFY_MASK), null, newAclSlot)
+      expect(mergeResult, `SetEntriesInAclW setup (${mergeResult})`).toBe(abi.ERROR_SUCCESS)
+      const newAcl = decodePtr(newAclSlot)
+      expect(newAcl).not.toBeNull()
+      const applyResult = api.setNamedSecurityInfoW(
+        dir, abi.SE_FILE_OBJECT, abi.DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, null, null, newAcl, null,
+      )
+      if (newAcl !== null) api.localFree(newAcl)
+      expect(applyResult, `SetNamedSecurityInfoW setup (${applyResult})`).toBe(abi.ERROR_SUCCESS)
+      mkdirSync(childDir)
+
+      grantWrite(api, dir, capabilitySid, lowSid, world)
+
+      expect(readLabelAces(api, dir)).toEqual([{ sid: 'S-1-16-4096', mask: abi.SYSTEM_MANDATORY_LABEL_NO_WRITE_UP }])
+      expect(readDirectAces(api, dir)).toContainEqual({ sid: abi.OWNER_RIGHTS_SID, mask: abi.OWNER_RELABEL_MASK })
+      const inherited = readTypedAces(api, childDir)
+      expect(inherited.some(ace => ace.sid === 'S-1-4-4242-31' && (ace.flags & abi.INHERITED_ACE) !== 0)).toBe(true)
+      expect(inherited.some(ace => ace.sid === abi.OWNER_RIGHTS_SID && (ace.flags & abi.INHERITED_ACE) !== 0)).toBe(true)
+      revokeWrite(api, dir, capabilitySid)
+      expect(readLabelAces(api, dir)).toEqual([])
+    } finally {
+      if (!isNullPtr(authenticatedUsers)) api.localFree(authenticatedUsers)
       if (!isNullPtr(capabilitySid)) api.localFree(capabilitySid)
       if (!isNullPtr(lowSid)) api.localFree(lowSid)
       if (!isNullPtr(world)) api.localFree(world)
