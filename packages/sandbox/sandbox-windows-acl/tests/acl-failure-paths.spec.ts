@@ -15,6 +15,7 @@ import type { Mock } from 'vitest'
 import koffi from 'koffi'
 
 import { grantWrite, revokeWrite, withPathLock } from '../src/acl.ts'
+import { ACL_DIAGNOSIS_SKILL } from '../src/acl-skill.ts'
 import { allocBytes, ptrAddress } from '../src/ffi.ts'
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
 import * as abi from '../src/win32-abi.ts'
@@ -347,7 +348,8 @@ describe('mergeAndApply failure paths', () => {
 
   it('frees the merged ACL and the label ACL and reports when SetNamedSecurityInfoW fails', () => {
     const localFree = vi.fn(() => 0n as NativePtr)
-    const api = aclApi({ setNamedSecurityInfoW: vi.fn(() => 5), localFree })
+    const setNamedSecurityInfoW = vi.fn(() => 1336) // ERROR_INVALID_ACL: not an access refusal, so no retry
+    const api = aclApi({ setNamedSecurityInfoW, localFree })
     const sid = craftSid(1, 0)
     let caught: unknown
     try {
@@ -357,8 +359,61 @@ describe('mergeAndApply failure paths', () => {
     }
     expect(caught).toBeInstanceOf(Win32Error)
     expect((caught as Win32Error).api).toBe('SetNamedSecurityInfoW')
+    expect((caught as Win32Error).win32Code).toBe(1336)
+    expect(setNamedSecurityInfoW).toHaveBeenCalledTimes(1)
     expect(localFree).toHaveBeenCalledWith(9n) // merged DACL
     expect(localFree).toHaveBeenCalledWith(11n) // label ACL
+  })
+
+  it('grants OWNER RIGHTS the relabel rights and applies again when the label apply is denied', () => {
+    const localFree = vi.fn(() => 0n as NativePtr)
+    const setNamedSecurityInfoW = vi.fn((..._args: Parameters<Win32Bindings['setNamedSecurityInfoW']>) => 0).mockReturnValueOnce(abi.ERROR_ACCESS_DENIED)
+    const setEntriesInAclW = vi.fn((_count: number, _entries: Buffer, _old: unknown, newAcl: NativePtr) => {
+      koffi.encode(newAcl, PVOID, 9n)
+      return 0
+    })
+    const convertStringSidToSidW = vi.fn((_sid: string, slot: NativePtr) => {
+      koffi.encode(slot, PVOID, 13n)
+      return 1
+    })
+    const api = aclApi({ setNamedSecurityInfoW, setEntriesInAclW, convertStringSidToSidW, localFree })
+    grantWrite(api, 'C:\\granted', craftSid(1, 0), craftLowLabelSid(), craftWorldSid())
+    const labelApply = abi.DACL_SECURITY_INFORMATION | abi.LABEL_SECURITY_INFORMATION
+    expect(setNamedSecurityInfoW.mock.calls.map(call => call[2])).toEqual([labelApply, abi.DACL_SECURITY_INFORMATION, labelApply])
+    expect(convertStringSidToSidW).toHaveBeenCalledWith(abi.OWNER_RIGHTS_SID, expect.anything())
+    const [count, entry] = setEntriesInAclW.mock.calls[1] ?? []
+    expect(count).toBe(1)
+    expect(entry?.readUInt32LE(0)).toBe(abi.OWNER_RELABEL_MASK)
+    expect(entry?.readUInt32LE(4)).toBe(abi.GRANT_ACCESS)
+    expect(entry?.readUInt32LE(8)).toBe(abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT)
+    expect(entry?.readBigUInt64LE(40)).toBe(13n)
+    expect(localFree).toHaveBeenCalledWith(13n) // the OWNER RIGHTS SID
+  })
+
+  it('names the ACL repair when the directory refuses the owner-rights grant too', () => {
+    const localFree = vi.fn(() => 0n as NativePtr)
+    const setNamedSecurityInfoW = vi.fn(() => abi.ERROR_ACCESS_DENIED)
+    const convertStringSidToSidW = vi.fn((_sid: string, slot: NativePtr) => {
+      koffi.encode(slot, PVOID, 13n)
+      return 1
+    })
+    const api = aclApi({ setNamedSecurityInfoW, convertStringSidToSidW, localFree })
+    let caught: unknown
+    try {
+      grantWrite(api, 'C:\\granted', craftSid(1, 0), craftLowLabelSid(), craftWorldSid())
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught).not.toBeInstanceOf(Win32Error)
+    expect((caught as Error).message).toContain('C:\\granted')
+    expect((caught as Error).message).toContain(ACL_DIAGNOSIS_SKILL)
+    const cause = (caught as Error).cause
+    expect(cause).toBeInstanceOf(Win32Error)
+    expect((cause as Win32Error).api).toBe('SetNamedSecurityInfoW')
+    expect((cause as Win32Error).win32Code).toBe(abi.ERROR_ACCESS_DENIED)
+    expect(setNamedSecurityInfoW).toHaveBeenCalledTimes(2) // the label apply, then the DACL-only owner-rights apply
+    expect(localFree).toHaveBeenCalledWith(13n) // the OWNER RIGHTS SID
   })
 
   it('reports a failed descriptor LocalFree after a successful apply', () => {

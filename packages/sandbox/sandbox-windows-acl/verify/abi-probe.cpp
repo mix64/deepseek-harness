@@ -37,6 +37,8 @@ int wmain()
   P(LOCKFILE_EXCLUSIVE_LOCK);
   P(LOCKFILE_FAIL_IMMEDIATELY);
   P(ERROR_LOCK_VIOLATION);
+  P(ERROR_ACCESS_DENIED);
+  P((READ_CONTROL | WRITE_DAC | WRITE_OWNER));
   P(INHERITED_ACE);
   P(DISABLE_MAX_PRIVILEGE);
   P(LUA_TOKEN);
@@ -86,6 +88,8 @@ int wmain()
   static_assert(OPEN_ALWAYS == 4, "open always");
   static_assert(LOCKFILE_EXCLUSIVE_LOCK == 0x2 && LOCKFILE_FAIL_IMMEDIATELY == 0x1, "lockfile flags");
   static_assert(ERROR_LOCK_VIOLATION == 33, "lock violation");
+  static_assert(ERROR_ACCESS_DENIED == 5, "access denied");
+  static_assert((READ_CONTROL | WRITE_DAC | WRITE_OWNER) == 0xE0000, "owner relabel mask");
   static_assert(INHERITED_ACE == 0x10, "inherited ace flag");
   static_assert(GRANT_ACCESS == 1 && REVOKE_ACCESS == 4, "access modes");
   static_assert(SUB_CONTAINERS_AND_OBJECTS_INHERIT == 0x3, "inheritance");
