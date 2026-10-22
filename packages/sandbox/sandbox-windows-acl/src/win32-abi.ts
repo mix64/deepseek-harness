@@ -26,6 +26,13 @@ export const FILE_DELETE_CHILD = 0x0040
  * DACLs or take ownership to escape the allowlist.
  */
 export const GRANT_MASK = (FILE_GENERIC_WRITE | DELETE | FILE_DELETE_CHILD) & ~STANDARD_RIGHTS_WRITE
+/**
+ * Owner-rights mask granted when a directory refuses the Low label apply:
+ * the owner's implicit READ_CONTROL and WRITE_DAC plus WRITE_OWNER, which
+ * setting a mandatory label requires. An OWNER RIGHTS ACE replaces the
+ * implicit owner rights, so the mask must restate both implicit rights.
+ */
+export const OWNER_RELABEL_MASK = 0x000E0000
 /** Full access used in the restricted token default DACL. */
 export const FILE_ALL_ACCESS = 0x1F01FF
 /** CreateRestrictedToken flag that disables maximum privileges. */
@@ -34,6 +41,8 @@ export const DISABLE_MAX_PRIVILEGE = 0x1
 export const LUA_TOKEN = 0x4
 /** Restrict write access to the listed restricting SIDs. */
 export const WRITE_RESTRICTED = 0x8
+/** SDDL string of the OWNER RIGHTS SID, whose ACE applies to each object's current owner. */
+export const OWNER_RIGHTS_SID = 'S-1-3-4'
 /** WELL_KNOWN_SID_TYPE value for Everyone. */
 export const WinWorldSid = 1
 /** TOKEN_INFORMATION_CLASS value for token groups. */
@@ -91,6 +100,8 @@ export const CONTAINER_INHERIT_ACE = 0x2
 export const MAX_PATH = 260
 /** Successful Win32 status code. */
 export const ERROR_SUCCESS = 0
+/** Win32 error reported when the caller lacks a requested access right. */
+export const ERROR_ACCESS_DENIED = 5
 /** Win32 error reported when an immediate byte-range lock cannot be obtained. */
 export const ERROR_LOCK_VIOLATION = 33
 /** Generic read access bit. */

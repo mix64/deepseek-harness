@@ -24,6 +24,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { Win32Error } from '@deepseek-ai/dsh-win32-process'
 
 import { allocOverlapped, allocPtrSlot, decodePtr, decodeUint8At, decodeUint16At, decodeUint32At, getTempPath, isInvalidHandle, isNullPtr, ptrAddress, sameSidAt, throwLastError, throwWin32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
@@ -365,9 +366,19 @@ function hasForeignGrant(oldAcl: NativePtr, sidPtr: NativePtr): boolean {
  * identical descriptor across the whole tree (eager inheritance; minutes on
  * large workspaces). Otherwise read-merge-write, so pre-existing explicit ACEs
  * survive (same shape as {@link revokeWrite}). Runs under the per-path lock.
- * The directory must be owned by the caller AND grant WRITE_OWNER (the label
- * lives in the SACL; owner-implicit rights cover only READ_CONTROL and
- * WRITE_DAC) — a Full-control workspace satisfies both.
+ *
+ * Setting the label needs WRITE_OWNER, which the owner's implicit rights
+ * (READ_CONTROL and WRITE_DAC) do not include; a directory that inherits only
+ * Modify for the user (the default `%TEMP%` on many hosts) refuses the apply
+ * with ERROR_ACCESS_DENIED. On that refusal the owner's implicit WRITE_DAC
+ * merges an inheritable OWNER RIGHTS allow ACE for {@link abi.OWNER_RELABEL_MASK}
+ * ({@link grantOwnerRelabel}) and the apply runs once more. The ACE applies
+ * to each object's current owner only, so it gives no principal a right over
+ * an object it does not already own, and it must inherit: the apply's
+ * propagation skips, without reporting a failure, every child the caller
+ * cannot relabel.
+ * A directory the caller neither owns nor holds WRITE_DAC and WRITE_OWNER
+ * on fails with an error naming the `diagnose-windows-sandbox-acl` repair.
  * @param api - the binding table.
  * @param path - the directory whose DACL and label gain the grant (the workspace or temp root).
  * @param sidPtr - the capability SID the ACE names.
@@ -382,35 +393,109 @@ export function grantWrite(
   worldSidPtr: NativePtr,
 ): void {
   withPathLock(api, path, () => {
-    const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, path)
-    if (oldAcl !== null && labelAcl !== null
-      && hasExactGrant(oldAcl, sidPtr) && hasExactDeny(oldAcl, worldSidPtr)
-      && hasExactLabel(labelAcl, lowLabelSidPtr)) {
-      // The exact ACE, deny, and label stand: releasing the descriptor is the whole operation.
-      if (descriptor !== null) {
-        const freed = api.localFree(descriptor)
-        if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `grantWrite(${path}) descriptor`)
-      }
-      return
-    }
-    let label: NativePtr
     try {
-      label = buildLowLabelAcl(api, lowLabelSidPtr)
+      applyWriteGrant(api, path, sidPtr, lowLabelSidPtr, worldSidPtr)
+      return
     } catch (error) {
-      // The read already owns a descriptor allocation; release it before the
-      // label failure propagates.
-      if (descriptor !== null) api.localFree(descriptor)
-      throw error
+      if (!isApplyAccessDenied(error)) throw error
     }
-    mergeAndApply(
-      api, path,
-      Buffer.concat([
-        buildExplicitAccess(worldSidPtr, abi.DENY_ACCESS, abi.FILE_DELETE_CHILD, abi.CONTAINER_INHERIT_ACE),
-        buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK),
-      ]),
-      oldAcl, { kind: 'apply', acl: label }, descriptor, 'grantWrite',
-    )
+    try {
+      grantOwnerRelabel(api, path)
+      applyWriteGrant(api, path, sidPtr, lowLabelSidPtr, worldSidPtr)
+    } catch (error) {
+      if (!isApplyAccessDenied(error)) throw error
+      throw new Error(
+        `grantWrite(${path}): the current user cannot set the sandbox's Low integrity label on this directory, `
+        + 'which needs it to own the directory or hold WRITE_DAC and WRITE_OWNER there. '
+        + 'Run the diagnose-windows-sandbox-acl skill for this path, or grant the current user Full control of it.',
+        { cause: error },
+      )
+    }
   })
+}
+
+/**
+ * True when `error` is the ERROR_ACCESS_DENIED refusal of a security
+ * descriptor apply.
+ * @param error - the thrown value.
+ * @returns whether SetNamedSecurityInfoW failed with ERROR_ACCESS_DENIED.
+ */
+function isApplyAccessDenied(error: unknown): boolean {
+  return error instanceof Win32Error && error.api === 'SetNamedSecurityInfoW' && error.win32Code === abi.ERROR_ACCESS_DENIED
+}
+
+/**
+ * The single read-merge-write of {@link grantWrite}: skip when the exact ACE,
+ * deny, and label stand; otherwise merge the deny and the capability ACE and
+ * apply them with the Low label in one SetNamedSecurityInfoW call. Every
+ * allocation is released before a failure propagates, so the caller may retry.
+ * @param api - the binding table.
+ * @param path - the directory whose DACL and label gain the grant.
+ * @param sidPtr - the capability SID the ACE names.
+ * @param lowLabelSidPtr - the Low integrity SID the mandatory label names.
+ * @param worldSidPtr - the Everyone SID the ambient-delete deny names.
+ */
+function applyWriteGrant(
+  api: Win32Bindings,
+  path: string,
+  sidPtr: NativePtr,
+  lowLabelSidPtr: NativePtr,
+  worldSidPtr: NativePtr,
+): void {
+  const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, path)
+  if (oldAcl !== null && labelAcl !== null
+    && hasExactGrant(oldAcl, sidPtr) && hasExactDeny(oldAcl, worldSidPtr)
+    && hasExactLabel(labelAcl, lowLabelSidPtr)) {
+    // The exact ACE, deny, and label stand: releasing the descriptor is the whole operation.
+    if (descriptor !== null) {
+      const freed = api.localFree(descriptor)
+      if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `grantWrite(${path}) descriptor`)
+    }
+    return
+  }
+  let label: NativePtr
+  try {
+    label = buildLowLabelAcl(api, lowLabelSidPtr)
+  } catch (error) {
+    // The read already owns a descriptor allocation; release it before the
+    // label failure propagates.
+    if (descriptor !== null) api.localFree(descriptor)
+    throw error
+  }
+  mergeAndApply(
+    api, path,
+    Buffer.concat([
+      buildExplicitAccess(worldSidPtr, abi.DENY_ACCESS, abi.FILE_DELETE_CHILD, abi.CONTAINER_INHERIT_ACE),
+      buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK),
+    ]),
+    oldAcl, { kind: 'apply', acl: label }, descriptor, 'grantWrite',
+  )
+}
+
+/**
+ * Merge an inheritable OWNER RIGHTS allow ACE for {@link abi.OWNER_RELABEL_MASK}
+ * into the directory DACL and apply the DACL alone, which the owner's implicit
+ * WRITE_DAC authorizes. The edit stands after a revoke: a temp directory
+ * disappears with it, and a workspace keeps it for later label applies.
+ * @param api - the binding table.
+ * @param path - the directory whose owner gains WRITE_OWNER.
+ */
+function grantOwnerRelabel(api: Win32Bindings, path: string): void {
+  const sidSlot = allocPtrSlot()
+  if (api.convertStringSidToSidW(abi.OWNER_RIGHTS_SID, sidSlot) === 0) {
+    throwLastError(api, 'ConvertStringSidToSidW', abi.OWNER_RIGHTS_SID)
+  }
+  const ownerRightsSid = decodePtr(sidSlot)
+  if (ownerRightsSid === null) throwLastError(api, 'ConvertStringSidToSidW', `null SID for ${abi.OWNER_RIGHTS_SID}`)
+  try {
+    const { oldAcl, descriptor } = readCurrentSecurity(api, path)
+    mergeAndApply(
+      api, path, buildExplicitAccess(ownerRightsSid, abi.GRANT_ACCESS, abi.OWNER_RELABEL_MASK),
+      oldAcl, { kind: 'keep' }, descriptor, 'grantOwnerRelabel',
+    )
+  } finally {
+    api.localFree(ownerRightsSid)
+  }
 }
 
 /**
