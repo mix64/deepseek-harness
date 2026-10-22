@@ -13,7 +13,8 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
-import { AclWriteGrant, tempWriteSid, workspaceWriteSid } from '../src/index.ts'
+import { AclWriteGrant, formatRunnerArgs, tempWriteSid, workspaceWriteSid } from '../src/index.ts'
+import { outsideTempWorkspaceParent } from '../../../../scripts/snapshot-workspace-parent.ts'
 
 const isWin32 = process.platform === 'win32'
 const runnerEntry = fileURLToPath(new URL('../src/runner.ts', import.meta.url))
@@ -254,6 +255,70 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
       grantB.dispose()
       rmSync(tempA, { recursive: true, force: true })
       rmSync(tempB, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('additional roots: main and additional roots are writable, a sibling outside both is denied, a dropped root is inert', () => {
+    // The additional root lives outside the temp areas (on another drive when
+    // TMP is redirected), mirroring a session that adds a directory beside
+    // its workspace.
+    const main = join(scratchRoot, 'multi-main')
+    mkdirSync(main)
+    const extraParent = mkdtempSync(join(outsideTempWorkspaceParent(), '.dsh-acl-runner-extra-'))
+    const extra = join(extraParent, 'extra')
+    const sibling = join(extraParent, 'sibling')
+    mkdirSync(extra)
+    mkdirSync(sibling)
+    const privateTemp = join(isolatedTemp, 'multi-root-session')
+    mkdirSync(privateTemp)
+    const grants = [
+      [AclWriteGrant.create(workspaceWriteSid(main)), main, true],
+      [AclWriteGrant.create(workspaceWriteSid(extra)), extra, true],
+      [AclWriteGrant.create(tempWriteSid(privateTemp)), privateTemp, false],
+    ] as const
+    for (const [grant, dir, standing] of grants) grant.add(dir, standing)
+    const probe = [
+      "const fs = require('node:fs');",
+      "const targets = [['MAIN', process.argv[1]], ['EXTRA', process.argv[2]], ['SIBLING', process.argv[3]]];",
+      'for (const [name, target] of targets) {',
+      "try { fs.writeFileSync(target, name); console.log(name + ': OK'); } catch { console.log(name + ': DENIED'); }",
+      '}',
+    ].join('')
+    const temp = { dir: privateTemp, writeSid: tempWriteSid(privateTemp) }
+    const mainRoot = { dir: main, writeSid: workspaceWriteSid(main) }
+    const extraRoot = { dir: extra, writeSid: workspaceWriteSid(extra) }
+    const run = (name: string, writable: readonly [typeof mainRoot, ...Array<typeof mainRoot>]) => runRunner(formatRunnerArgs(
+      { grants: 'caller', mode: 'workspace-write', writable, temp },
+      [process.execPath, '-e', probe, join(main, `${name}.txt`), join(extra, `${name}.txt`), join(sibling, `${name}.txt`)],
+    ))
+    try {
+      const added = run('added', [mainRoot, extraRoot])
+      expect(added.status, `stderr: ${added.stderr}`).toBe(0)
+      expect(added.stdout).toContain('MAIN: OK')
+      expect(added.stdout).toContain('EXTRA: OK')
+      expect(added.stdout).toContain('SIBLING: DENIED')
+      expect(readFileSync(join(extra, 'added.txt'), 'utf8')).toBe('EXTRA')
+      expect(existsSync(join(sibling, 'added.txt'))).toBe(false)
+
+      // The extra root's standing ACE stays, but a token without its SID cannot use it.
+      const dropped = run('dropped', [mainRoot])
+      expect(dropped.status, `stderr: ${dropped.stderr}`).toBe(0)
+      expect(dropped.stdout).toContain('MAIN: OK')
+      expect(dropped.stdout).toContain('EXTRA: DENIED')
+      expect(dropped.stdout).toContain('SIBLING: DENIED')
+      expect(existsSync(join(extra, 'dropped.txt'))).toBe(false)
+
+      const swapped = runRunner(formatRunnerArgs(
+        { grants: 'caller', mode: 'workspace-write', writable: [mainRoot, { dir: extra, writeSid: mainRoot.writeSid }], temp },
+        [process.execPath, '-e', probe, join(main, 'swapped.txt'), join(extra, 'swapped.txt'), join(sibling, 'swapped.txt')],
+      ))
+      expect(swapped.status).toBe(127)
+      expect(swapped.stderr).toContain(`windows-acl-run: --write-sid does not match --workspace ${extra}`)
+      expect(existsSync(join(main, 'swapped.txt'))).toBe(false)
+    } finally {
+      for (const [grant] of grants) grant.dispose()
+      rmSync(extraParent, { recursive: true, force: true })
+      rmSync(privateTemp, { recursive: true, force: true })
     }
   }, 30_000)
 

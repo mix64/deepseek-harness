@@ -96,7 +96,7 @@ describe('Worker Landlock through the production sandbox stack', () => {
     }))
     const writable = run(bash, bash.resolve({
       command: `echo allowed > ${WORKSPACE}/writable.txt`,
-      sandboxPolicy: { mode: 'workspace-write', workspaceRoot: WORKSPACE },
+      sandboxPolicy: { mode: 'workspace-write', workspaceRoot: WORKSPACE, additionalRoots: [] },
     }))
     const [strictResult, writableResult] = await Promise.all([strict, writable])
     expect(strictResult.sandbox).toEqual({ mode: 'read-only', denied: true, enforcement: 'full' })

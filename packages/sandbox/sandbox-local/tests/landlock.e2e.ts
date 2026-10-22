@@ -62,7 +62,7 @@ describe.skipIf(!landlockUsable)('sandbox-local: real Landlock confinement throu
   it('read-only denies a write — the file must NOT exist, the wrap reports the probed enforcement', async () => {
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
-    const { result, enforcement: wrapped } = await runConfined(sandbox, `echo hi > ${workdir}/denied.txt`, { mode: 'read-only', workspaceRoot: workdir })
+    const { result, enforcement: wrapped } = await runConfined(sandbox, `echo hi > ${workdir}/denied.txt`, { mode: 'read-only', workspaceRoot: workdir, additionalRoots: [] })
     expect(result.status).not.toBe(0)
     expect(wrapped).toBe(enforcement)
     expect(existsSync(join(workdir, 'denied.txt'))).toBe(false)
@@ -71,7 +71,7 @@ describe.skipIf(!landlockUsable)('sandbox-local: real Landlock confinement throu
   it('read-only keeps the tree readable/executable and /dev/null writable', async () => {
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
-    const { result } = await runConfined(sandbox, 'ls / > /dev/null && echo dev-ok', { mode: 'read-only', workspaceRoot: workdir })
+    const { result } = await runConfined(sandbox, 'ls / > /dev/null && echo dev-ok', { mode: 'read-only', workspaceRoot: workdir, additionalRoots: [] })
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('dev-ok\n')
   })
@@ -83,7 +83,7 @@ describe.skipIf(!landlockUsable)('sandbox-local: real Landlock confinement throu
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
     const target = `/dev/shm/dsh-landlock-e2e-${process.pid}`
-    const { result } = await runConfined(sandbox, `echo hi > ${target}`, { mode: 'read-only', workspaceRoot: workdir })
+    const { result } = await runConfined(sandbox, `echo hi > ${target}`, { mode: 'read-only', workspaceRoot: workdir, additionalRoots: [] })
     expect(result.status).not.toBe(0)
     expect(existsSync(target)).toBe(false)
   })
@@ -93,11 +93,11 @@ describe.skipIf(!landlockUsable)('sandbox-local: real Landlock confinement throu
     const outside = await tempDir(homedir())
     const sandbox = await provider()
 
-    const inside = await runConfined(sandbox, `printf landlock-ok > ${workdir}/allowed.txt`, { mode: 'workspace-write', workspaceRoot: workdir })
+    const inside = await runConfined(sandbox, `printf landlock-ok > ${workdir}/allowed.txt`, { mode: 'workspace-write', workspaceRoot: workdir, additionalRoots: [] })
     expect(inside.result.status).toBe(0)
     expect(readFileSync(join(workdir, 'allowed.txt'), 'utf8')).toBe('landlock-ok')
 
-    const denied = await runConfined(sandbox, `echo hi > ${outside}/denied.txt`, { mode: 'workspace-write', workspaceRoot: workdir })
+    const denied = await runConfined(sandbox, `echo hi > ${outside}/denied.txt`, { mode: 'workspace-write', workspaceRoot: workdir, additionalRoots: [] })
     expect(denied.result.status).not.toBe(0)
     expect(existsSync(join(outside, 'denied.txt'))).toBe(false)
   })
@@ -106,7 +106,7 @@ describe.skipIf(!landlockUsable)('sandbox-local: real Landlock confinement throu
     const workdir = await tempDir(homedir())
     const scratch = await tempDir(tmpdir())
     const sandbox = await provider()
-    const { result } = await runConfined(sandbox, `printf tmp-ok > ${scratch}/scratch.txt`, { mode: 'workspace-write', workspaceRoot: workdir })
+    const { result } = await runConfined(sandbox, `printf tmp-ok > ${scratch}/scratch.txt`, { mode: 'workspace-write', workspaceRoot: workdir, additionalRoots: [] })
     expect(result.status).toBe(0)
     expect(readFileSync(join(scratch, 'scratch.txt'), 'utf8')).toBe('tmp-ok')
   })

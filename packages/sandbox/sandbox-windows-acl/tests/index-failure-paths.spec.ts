@@ -190,35 +190,34 @@ beforeEach(() => {
 describe('AclSandbox constructor validation', () => {
   it('rejects a writable directory that does not exist', () => {
     const missing = join(scratch(), 'missing')
-    expect(() => new AclSandbox({ writableDirs: [missing], tempDir: null, mode: 'read-only' }))
+    expect(() => new AclSandbox({ writable: [{ dir: missing, writeSid: 'S-1-4-9000-1' }], tempDir: null, mode: 'workspace-write' }))
       .toThrow(/writable dir does not exist/u)
   })
 
   it('resolves relative writable directories to absolute paths', () => {
     const dir = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [dir], tempDir: null, mode: 'read-only' })
-    expect(sandbox.writableDirs).toEqual([resolve(dir)])
-    expect(sandbox.mode).toBe('read-only')
+    const sandbox = new AclSandbox({ writable: [{ dir, writeSid: 'S-1-4-9000-1' }], tempDir: null, mode: 'workspace-write' })
+    expect(sandbox.writable).toEqual([{ dir: resolve(dir), writeSid: 'S-1-4-9000-1' }])
+    expect(sandbox.mode).toBe('workspace-write')
     expect(sandbox.tempDir).toBeUndefined()
   })
 
   it('rejects temp authority under read-only', () => {
     const workspace = scratch()
     const temp = scratch()
-    expect(() => new AclSandbox({ writableDirs: [workspace], tempDir: temp, mode: 'read-only' }))
+    expect(() => new AclSandbox({ writable: [], tempDir: temp, mode: 'read-only' }))
       .toThrow(/read-only does not accept a temp directory/u)
-    expect(() => new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-1', mode: 'read-only' }))
+    expect(() => new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-1' }], tempDir: null, mode: 'read-only' }))
       .toThrow(/read-only does not accept write SIDs/u)
-    expect(() => new AclSandbox({ writableDirs: [workspace], tempDir: null, tempWriteSid: 'S-1-4-9000-1-1', mode: 'read-only' }))
+    expect(() => new AclSandbox({ writable: [], tempDir: null, tempWriteSid: 'S-1-4-9000-1-1', mode: 'read-only' }))
       .toThrow(/read-only does not accept write SIDs/u)
   })
 
   it('rejects a temp SID when temp writes are disabled', () => {
     const workspace = scratch()
     expect(() => new AclSandbox({
-      writableDirs: [workspace],
+      writable: [{ dir: workspace, writeSid: 'S-1-4-9000-2' }],
       tempDir: null,
-      writeSid: 'S-1-4-9000-2',
       tempWriteSid: 'S-1-4-9000-2-1',
       mode: 'workspace-write',
     })).toThrow(/temp write SID requires a temp directory/u)
@@ -231,9 +230,8 @@ describe('AclSandbox init', () => {
     const workspace = scratch()
     const temp = scratch()
     const sandbox = new AclSandbox({
-      writableDirs: [workspace],
+      writable: [{ dir: workspace, writeSid: 'S-1-4-9000-1' }],
       tempDir: temp,
-      writeSid: 'S-1-4-9000-1',
       tempWriteSid: 'S-1-4-9000-1-1',
       mode: 'workspace-write',
     })
@@ -242,16 +240,34 @@ describe('AclSandbox init', () => {
     expect(setNamedSecurityInfoW).toHaveBeenCalledTimes(2)
   })
 
+  it('grants every writable root under its own SID before the temp directory', async () => {
+    const { setNamedSecurityInfoW } = state.stubs as HappyStubs
+    const sandbox = new AclSandbox({
+      writable: [{ dir: scratch(), writeSid: 'S-1-4-9000-20' }, { dir: scratch(), writeSid: 'S-1-4-9000-21' }],
+      tempDir: scratch(),
+      tempWriteSid: 'S-1-4-9000-20-1',
+      mode: 'workspace-write',
+    })
+    await sandbox.init()
+    expect(setNamedSecurityInfoW).toHaveBeenCalledTimes(3)
+    expect(() => new AclSandbox({
+      writable: [{ dir: scratch(), writeSid: 'S-1-4-9000-22' }, { dir: scratch(), writeSid: 'S-1-4-9000-23' }],
+      tempDir: scratch(),
+      tempWriteSid: 'S-1-4-9000-23',
+      mode: 'workspace-write',
+    })).toThrow(/must be distinct/u)
+  })
+
   it('requires an explicit private temp directory or null under workspace-write', () => {
     const workspace = scratch()
-    expect(() => new AclSandbox({ writableDirs: [workspace], writeSid: 'S-1-4-9000-2', mode: 'workspace-write' }))
+    expect(() => new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-2' }], mode: 'workspace-write' }))
       .toThrow(/requires an explicit private temp directory or null/u)
   })
 
   it('applies no grants when the temp dir option is null', async () => {
     const { setNamedSecurityInfoW } = state.stubs as HappyStubs
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-3', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-3' }], tempDir: null, mode: 'workspace-write' })
     await sandbox.init()
     expect(setNamedSecurityInfoW).toHaveBeenCalledTimes(1) // workspace only
   })
@@ -259,9 +275,8 @@ describe('AclSandbox init', () => {
   it('rejects a temp dir that does not exist', async () => {
     const workspace = scratch()
     const sandbox = new AclSandbox({
-      writableDirs: [workspace],
+      writable: [{ dir: workspace, writeSid: 'S-1-4-9000-4' }],
       tempDir: join(scratch(), 'missing'),
-      writeSid: 'S-1-4-9000-4',
       tempWriteSid: 'S-1-4-9000-4-1',
       mode: 'workspace-write',
     })
@@ -270,8 +285,7 @@ describe('AclSandbox init', () => {
 
   it('builds a read-only token without parsing a write SID or applying grants', async () => {
     const { convertStringSidToSidW, setNamedSecurityInfoW } = state.stubs as HappyStubs
-    const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, mode: 'read-only' })
+    const sandbox = new AclSandbox({ writable: [], tempDir: null, mode: 'read-only' })
     await sandbox.init()
     expect(convertStringSidToSidW).not.toHaveBeenCalled()
     expect(setNamedSecurityInfoW).not.toHaveBeenCalled()
@@ -281,7 +295,7 @@ describe('AclSandbox init', () => {
   it('applies no grants when the caller owns the DACLs (manageDacls: false)', async () => {
     const { setNamedSecurityInfoW } = state.stubs as HappyStubs
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-5', mode: 'workspace-write', manageDacls: false })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-5' }], tempDir: null, mode: 'workspace-write', manageDacls: false })
     await sandbox.init()
     expect(setNamedSecurityInfoW).not.toHaveBeenCalled()
     expect(() => { sandbox.dispose() }).not.toThrow() // caller-owned DACLs: nothing to revoke
@@ -289,7 +303,7 @@ describe('AclSandbox init', () => {
 
   it('refuses a second init on the same instance', async () => {
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-6', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-6' }], tempDir: null, mode: 'workspace-write' })
     await sandbox.init()
     await expect(sandbox.init()).rejects.toThrow(/already initialized/u)
   })
@@ -298,7 +312,7 @@ describe('AclSandbox init', () => {
     const { convertStringSidToSidW, setNamedSecurityInfoW } = state.stubs as HappyStubs
     convertStringSidToSidW.mockReturnValue(0)
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-7', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-7' }], tempDir: null, mode: 'workspace-write' })
     await expect(sandbox.init()).rejects.toMatchObject({ api: 'ConvertStringSidToSidW' })
     expect(setNamedSecurityInfoW).not.toHaveBeenCalled()
   })
@@ -307,14 +321,14 @@ describe('AclSandbox init', () => {
     const { convertStringSidToSidW } = state.stubs as HappyStubs
     convertStringSidToSidW.mockImplementation(() => 1) // no out slot write
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-8', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-8' }], tempDir: null, mode: 'workspace-write' })
     await expect(sandbox.init()).rejects.toBeInstanceOf(Win32Error)
   })
 
   it('aggregates failed current and restricted token closes after init', async () => {
     const { closeHandle, createRestrictedToken } = state.stubs as HappyStubs
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-9', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-9' }], tempDir: null, mode: 'workspace-write' })
     const restrictedToken = 99n
     createRestrictedToken.mockImplementation((
       _existing: unknown, _flags: unknown, _dc: unknown, _ds: unknown, _pc: unknown, _pd: unknown,
@@ -359,9 +373,8 @@ describe('AclSandbox init', () => {
       return 0
     })
     const sandbox = new AclSandbox({
-      writableDirs: [workspace],
+      writable: [{ dir: workspace, writeSid: 'S-1-4-9000-10' }],
       tempDir: temp,
-      writeSid: 'S-1-4-9000-10',
       tempWriteSid: 'S-1-4-9000-10-1',
       mode: 'workspace-write',
     })
@@ -373,7 +386,7 @@ describe('AclSandbox init', () => {
 
 describe('AclSandbox spawn', () => {
   it('refuses control with piped stdio before starting a restricted process', async () => {
-    const sandbox = new AclSandbox({ writableDirs: [], tempDir: null, mode: 'read-only' })
+    const sandbox = new AclSandbox({ writable: [], tempDir: null, mode: 'read-only' })
     await sandbox.init()
     expect(() => sandbox.spawn({ command: 'probe.exe', controlFileDescriptor: 7 })).toThrow('control pipe requires inherited stdio')
     sandbox.dispose()
@@ -382,7 +395,7 @@ describe('AclSandbox spawn', () => {
   it('forwards the inherited control pipe to the restricted child', async () => {
     const { api } = state.stubs as HappyStubs
     Object.assign(api, { uvGetOsfhandle: vi.fn(() => 107n), getFileType: vi.fn(() => 3) })
-    const sandbox = new AclSandbox({ writableDirs: [], tempDir: null, mode: 'read-only' })
+    const sandbox = new AclSandbox({ writable: [], tempDir: null, mode: 'read-only' })
     await sandbox.init()
     const child = sandbox.spawn({ command: 'probe.exe', stdio: 'inherit', controlFileDescriptor: 7 })
     await expect(child.wait()).resolves.toEqual({ stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode: 42 })
@@ -391,13 +404,13 @@ describe('AclSandbox spawn', () => {
 
   it('refuses to spawn before init', () => {
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-11', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-11' }], tempDir: null, mode: 'workspace-write' })
     expect(() => sandbox.spawn({ command: 'probe.exe' })).toThrow(/not initialized/u)
   })
 
   it('pipe spawn drains empty pipes and settles with the child exit code', async () => {
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-12', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-12' }], tempDir: null, mode: 'workspace-write' })
     await sandbox.init()
     const child = sandbox.spawn({ command: 'probe.exe', args: ['--flag'], cwd: workspace })
     expect(child.pid).toBe(1234)
@@ -410,7 +423,7 @@ describe('AclSandbox spawn', () => {
   it('inherit spawn settles with empty stdio and closes the kill-on-close job', async () => {
     const { closeHandle } = state.stubs as HappyStubs
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-13', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-13' }], tempDir: null, mode: 'workspace-write' })
     await sandbox.init()
     const child = sandbox.spawn({ command: 'probe.exe', stdio: 'inherit' })
     await expect(child.wait()).resolves.toEqual({ stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode: 42 })
@@ -420,7 +433,7 @@ describe('AclSandbox spawn', () => {
   it('inherit spawn reports a failed close of the kill-on-close job', async () => {
     const { closeHandle, createJobObjectW } = state.stubs as HappyStubs
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-14', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-14' }], tempDir: null, mode: 'workspace-write' })
     await sandbox.init()
     let jobHandle = 0n
     closeHandle.mockImplementation((handle: NativePtr) => (handle === jobHandle ? 0 : 1))
@@ -433,7 +446,7 @@ describe('AclSandbox spawn', () => {
 describe('AclSandbox dispose', () => {
   it('is a no-op before init', () => {
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-15', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-15' }], tempDir: null, mode: 'workspace-write' })
     expect(() => { sandbox.dispose() }).not.toThrow()
   })
 
@@ -442,9 +455,8 @@ describe('AclSandbox dispose', () => {
     const workspace = scratch()
     const temp = scratch()
     const sandbox = new AclSandbox({
-      writableDirs: [workspace],
+      writable: [{ dir: workspace, writeSid: 'S-1-4-9000-16' }],
       tempDir: temp,
-      writeSid: 'S-1-4-9000-16',
       tempWriteSid: 'S-1-4-9000-16-1',
       mode: 'workspace-write',
     })
@@ -456,7 +468,7 @@ describe('AclSandbox dispose', () => {
   it('aggregates SID and token cleanup failures into an AggregateError', async () => {
     const { localFree } = state.stubs as HappyStubs
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-17', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-17' }], tempDir: null, mode: 'workspace-write' })
     await sandbox.init()
     localFree.mockReturnValue(1n)
     expect(() => { sandbox.dispose() }).toThrow(AggregateError)
@@ -465,7 +477,7 @@ describe('AclSandbox dispose', () => {
   it('reports a failed close of the restricted token', async () => {
     const { createRestrictedToken, closeHandle } = state.stubs as HappyStubs
     const workspace = scratch()
-    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-18', mode: 'workspace-write' })
+    const sandbox = new AclSandbox({ writable: [{ dir: workspace, writeSid: 'S-1-4-9000-18' }], tempDir: null, mode: 'workspace-write' })
     let restrictedToken = 0n
     createRestrictedToken.mockImplementation((
       _existing: unknown, _flags: unknown, _dc: unknown, _ds: unknown, _pc: unknown, _pd: unknown,

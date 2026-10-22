@@ -193,10 +193,11 @@ describe('Session fixture lifecycle', () => {
     const runtime = await SlotTestRuntime.create()
     await expect(runtime.sessions.create()).rejects.toThrow(/create is not stubbed/)
     await runtime.sessions.add({ id: 'created' })
-    const create = vi.fn(() => Promise.resolve('created' as SessionId))
+    const create = vi.fn(() => Promise.resolve({ sessionId: 'created' as SessionId, rejectedAdditionalRoots: [] }))
     runtime.sessions.stubCreate(create)
 
-    await expect(runtime.sessions.create({ cwd: '/workspace' })).resolves.toBe('created')
+    await expect(runtime.sessions.create({ cwd: '/workspace' }))
+      .resolves.toEqual({ sessionId: 'created', rejectedAdditionalRoots: [] })
     await expect(runtime.sessions.refresh()).resolves.toBeUndefined()
     expect(create).toHaveBeenCalledWith({ cwd: '/workspace' })
     expect(runtime.sessions.calls.slice(-2)).toEqual([

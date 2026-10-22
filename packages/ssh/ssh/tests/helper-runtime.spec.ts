@@ -9,7 +9,7 @@ import { createHelperHarness as helper } from './fixtures/helper.ts'
 import { hunkSchema, moveOptionsSchema, moveResultSchema, deleteResultSchema, targetSchema, writeResultSchema, editResultSchema, infoSchema, entriesSchema } from '../src/schemas.ts'
 
 
-const policy = (workspaceRoot: string) => ({ mode: 'workspace-write', workspaceRoot })
+const policy = (workspaceRoot: string) => ({ mode: 'workspace-write', workspaceRoot, additionalRoots: [] })
 
 describe.skipIf(process.platform === 'win32')('SSH helper runtime', () => {
   it('binds relative filesystem operations to the negotiated workspace without chdir', async () => {
@@ -41,7 +41,7 @@ describe.skipIf(process.platform === 'win32')('SSH helper runtime', () => {
       expect(edited.after).toBe('third text')
       await test.client.request('fs.edit', { target, edit: { oldString: 'third', newString: 'fourth', replaceAll: false }, policy: policy(test.root) }, editResultSchema)
       expect(await test.client.request('fs.readText', { target }, z.string())).toBe('fourth text')
-      await expect(test.client.request('fs.write', { target, content: 'denied', policy: { mode: 'read-only', workspaceRoot: test.root } }, writeResultSchema)).rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+      await expect(test.client.request('fs.write', { target, content: 'denied', policy: { mode: 'read-only', workspaceRoot: test.root, additionalRoots: [] } }, writeResultSchema)).rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
     } finally { await test.close() }
   })
 
@@ -93,7 +93,7 @@ describe.skipIf(process.platform === 'win32')('SSH helper runtime', () => {
     }))
     const resolveExecutable = vi.spyOn(LocalSubprocessRuntime.prototype, 'resolveExecutable')
     try {
-      await expect(test.client.request('sandbox', { argv: ['true'], policy: { mode: 'danger-full-access', workspaceRoot: test.root } }, z.unknown())).rejects.toThrow('does not need')
+      await expect(test.client.request('sandbox', { argv: ['true'], policy: { mode: 'danger-full-access', workspaceRoot: test.root, additionalRoots: [] } }, z.unknown())).rejects.toThrow('does not need')
       expect(await test.client.request('executable', { command: process.execPath, env: { REMOVED: null } }, z.string())).toBe(process.execPath)
       expect(await test.client.request('executable', { command: process.execPath }, z.string())).toBe(process.execPath)
       expect(await test.client.request('terminal.environment', {}, z.unknown())).toMatchObject({ platform: 'posix' })

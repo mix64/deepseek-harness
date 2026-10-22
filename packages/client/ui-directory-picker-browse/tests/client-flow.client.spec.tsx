@@ -18,6 +18,7 @@ usePinnedBrowserLanguages('zh-CN')
 afterEach(cleanup)
 
 const HOLES = ['conversation.hero.workspace.directoryFlow', 'sidebar.workspaces.directoryFlow'] as const
+const COMPOSER_HOLE = 'conversation.input.directories.directoryFlow'
 
 const HOME = '/home/u'
 const homeListing: DirectoryListing = {
@@ -36,9 +37,9 @@ async function bench() {
   const createDirectory = vi.fn(async (path: string, name: string) => `${path}/${name}`)
   ctx.provide('uiWorkspace', { listDirectory, createDirectory } as never)
   const slots = ctx.get('slots') as SlotRegistry
-  const declare = () => slots.register({
+  const declare = (holes: readonly string[] = HOLES) => slots.register({
     name: 'root',
-    children: Object.fromEntries(HOLES.map(name => [name, { kind: 'single', scope: 'root' }])),
+    children: Object.fromEntries(holes.map(name => [name, { kind: 'single', scope: 'root' }])),
   } as never, () => null)
   return { ctx, slots, listDirectory, createDirectory, declare }
 }
@@ -72,6 +73,17 @@ describe('directory-picker-browse client half', () => {
     after.declare()
     await Promise.resolve()
     for (const hole of HOLES) expect(after.slots.entries(hole)).toHaveLength(1)
+  })
+
+  it('fills the composer directories hole without the Workspace pair, and leaves with its fiber', async () => {
+    const b = await bench()
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    b.declare([COMPOSER_HOLE])
+    await Promise.resolve()
+    expect(b.slots.entries(COMPOSER_HOLE)).toHaveLength(1)
+    await fiber.dispose()
+    expect(b.slots.entries(COMPOSER_HOLE)).toHaveLength(0)
   })
 
   it('rolls back the outer injection when the second hole is already occupied', async () => {

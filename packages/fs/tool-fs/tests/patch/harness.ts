@@ -61,7 +61,7 @@ export async function setup(options: { policy?: boolean; mode?: SandboxMode; pro
     agent: { session: { header: { cwd: workspace } } } as never,
   }
   const sandbox = new FsSandboxController(ctx)
-  const policy = options.mode === undefined ? undefined : { mode: options.mode, workspaceRoot: workspace }
+  const policy = options.mode === undefined ? undefined : { mode: options.mode, workspaceRoot: workspace, additionalRoots: [] }
   const observations: { path: string; observation: FsObservation }[] = []
   ctx.on('fs/observed', (target, observation) => { observations.push({ path: target.displayPath, observation }) })
   const target = (name: string) => fs.resolve(name, { cwd: workspace })

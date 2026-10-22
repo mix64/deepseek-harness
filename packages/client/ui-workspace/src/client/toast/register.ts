@@ -72,6 +72,14 @@ export function registerToasts(
       }),
     }, ToastEntry<PropsRuntime<'workspace.toast', 'createFailed'>>)
     yield ctx.slots.register({
+      name: 'workspace.toast', key: 'rootsNotCarried', locale: 'workspace',
+      inject: (): ToastDisplayInjected<'rootsNotCarried'> => ({
+        display: (notice, t) => ({
+          text: t('toast.rootsNotCarried', { paths: notice.paths.join(t('toast.pathSeparator')) }), tone: 'warning', holdMs: 6000,
+        }),
+      }),
+    }, ToastEntry<PropsRuntime<'workspace.toast', 'rootsNotCarried'>>)
+    yield ctx.slots.register({
       name: 'workspace.toast', key: 'forkRequiresOpen', locale: 'workspace',
       inject: (): ToastDisplayInjected<'forkRequiresOpen'> => ({
         display: (notice, t, dismiss) => ({

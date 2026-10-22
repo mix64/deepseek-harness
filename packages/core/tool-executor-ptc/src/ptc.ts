@@ -714,7 +714,7 @@ export function createRunCodeTool(
         }
       }
       return runtime.sandboxMode === undefined || exec.agent === undefined ? run(exec.signal)
-        : calls.run(exec.agent.session.id, exec.signal, () => resolveSandboxPolicy(ctx, exec).mode, run)
+        : calls.run(exec.agent.session.id, exec.signal, () => resolveSandboxPolicy(ctx, exec), run)
     },
     // The model-authored description is the call's always-visible UI label
     // (the bash `description` precedent); the program itself rides rawInput.

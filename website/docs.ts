@@ -147,6 +147,14 @@ const homeAndGuide = pairedPages([
     order: 4,
   },
   {
+    source: 'docs/user/guide/additional-directories.md',
+    route: 'guide/additional-directories.md',
+    label: { root: '在工作区之外写入', en: 'Write outside the workspace' },
+    sidebar: { root: 'zh-guide', en: 'en-guide' },
+    section: { root: '入门', en: 'Guide' },
+    order: 5,
+  },
+  {
     source: 'docs/user/guide/python-sdk.md',
     route: 'guide/python-sdk.md',
     label: { root: 'Python', en: 'Python' },

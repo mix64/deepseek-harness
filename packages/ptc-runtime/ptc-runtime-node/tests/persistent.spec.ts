@@ -31,9 +31,9 @@ describe.each([
   it('keeps a snapshot of caller-owned root arrays and rejects changed grants', async () => {
     const { run, runtime, owner, cwd } = await setup()
     const roots = [cwd]
-    const policy = { mode: 'danger-full-access' as const, workspaceRoot: cwd, additionalWritableRoots: roots }
+    const policy = { mode: 'danger-full-access' as const, workspaceRoot: cwd, additionalRoots: [], additionalWritableRoots: roots }
     expect((await run('var retained = 7; retained', { sandboxPolicy: policy })).value).toBe(7)
-    expect((await run('retained', { sandboxPolicy: { ...policy, additionalWritableRoots: [cwd, cwd] } })).value).toBe(7)
+    expect((await run('retained', { sandboxPolicy: { ...policy, additionalRoots: [], additionalWritableRoots: [cwd, cwd] } })).value).toBe(7)
     roots[0] = tmpdir()
     await expect(run('retained', { sandboxPolicy: policy })).rejects.toThrow('release the retained environment')
     await runtime.release(owner)
@@ -253,7 +253,7 @@ describe.each([
     expect(runtime.sandboxMode).toBe('danger-full-access')
     expect(runtime.programFormat).toBe(format)
     expect(runtime.timeout).toEqual({ defaultMs: 120_000, maxMs: 600_000 })
-    expect(runtime.resolve({ program: '1', bindings: [], sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd() } }).sandboxPolicy?.mode).toBe('read-only')
+    expect(runtime.resolve({ program: '1', bindings: [], sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd(), additionalRoots: [] } }).sandboxPolicy?.mode).toBe('read-only')
     expect(() => runtime.resolve({ program: '1', bindings: [], cwd: 'relative' })).toThrow('absolute')
     expect(() => runtime.resolve({ program: '1', bindings: [], timeoutMs: 0 })).toThrow()
     await expect(run('1', { bindings: [{ global: 'console', functions: {} }] })).rejects.toThrow('reserved')

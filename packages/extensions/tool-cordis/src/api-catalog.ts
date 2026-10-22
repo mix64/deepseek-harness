@@ -2565,10 +2565,34 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'readonly maxAdditionalRoots: number',
+        description: 'Maximum number of additional roots one session may hold.',
+        parameters: [],
+      },
+      {
         signature: 'resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy',
-        description: 'Resolve the complete policy for one capability call. An approved explicit mode outranks the session\'s last `sandbox/mode` event, which outranks the deployment default. A session cwd is its workspace-write boundary; the configured root is the fallback for agentless calls and sessions without a cwd.',
+        description: 'Resolve the complete policy for one capability call. An approved explicit mode outranks the session\'s last `sandbox/mode` event, which outranks the deployment default. A session cwd is its workspace-write main root; the configured root is the fallback for agentless calls and sessions without a cwd. The session\'s last `sandbox/additional-roots` list supplies the additional roots; agentless calls have none.',
         parameters: [{ name: 'request', description: 'optional session and approved mode override.' }],
-        returns: 'the fully resolved per-call mode and absolute workspace root.',
+        returns: 'the fully resolved per-call mode, absolute main root, and additional roots.',
+      },
+      {
+        signature: 'additionalRootsOf(session: Session): AdditionalRoot[]',
+        description: 'Read the session\'s additional roots.',
+        parameters: [{ name: 'session', description: 'session whose log supplies the list.' }],
+        returns: 'the last logged list, empty without one.',
+      },
+      {
+        signature: 'editAdditionalRoots(session: Session, edit: AdditionalRootsEdit, signal?: AbortSignal): Promise<AdditionalRootsEditResult>',
+        description: 'THE validated write path for a session\'s additional roots. Edits of one session run one at a time, each against the list the previous one left. Every requested path is resolved and inspected through `ctx.fs` (the execution world), relative paths against the session\'s main root, then planned by planRootAdmission or planRootRemoval. Each newly admitted root is preflighted through `ctx.sandbox.confine()` under the prospective workspace-write policy, so a backend that grants per root (Windows ACL) materializes the grant now and a refusal is reported now; compositions without a sandbox provider skip the preflight. The edit appends at most one `sandbox/additional-roots` event, and none when the list is unchanged.',
+        parameters: [{ name: 'session', description: 'the session whose list is edited.' }, { name: 'edit', description: 'the requested change.' }, { name: 'signal', description: 'cancellation of the resolution and preflight; an aborted edit appends nothing.' }],
+        returns: 'the resulting list, whether it changed, and the refused paths.',
+        throws: ['when no `ctx.fs` provider is mounted, on cancellation, or on an execution-world I/O failure other than a missing path.'],
+      },
+      {
+        signature: 'successor(before: SandboxExecutionPolicy, event: SessionEvent): SandboxExecutionPolicy | undefined',
+        description: 'The policy a session resolves after one event commits, given the policy it resolved before. Consumers that hold a process, runtime, or call open under a resolved policy compare the successor with `sameSandboxPolicy` to decide whether that resource is still valid.',
+        parameters: [{ name: 'before', description: 'the policy resolved before the event.' }, { name: 'event', description: 'the committed or committing session event.' }],
+        returns: 'the next policy, or `undefined` when the event cannot change the policy.',
       },
       {
         signature: 'overrideOf(session: Session): SandboxMode | undefined',
@@ -5482,6 +5506,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
   {
+    name: 'AdditionalRoot',
+    declaration: 'export type AdditionalRoot = Branded<\'AdditionalRoot\'>;',
+  },
+  {
+    name: 'AdditionalRootRefusal',
+    declaration: 'export type AdditionalRootRefusal = {\n    kind: \'not-found\';\n    path: string;\n} | {\n    kind: \'not-directory\';\n    path: string;\n} | {\n    kind: \'not-listed\';\n    path: string;\n} | {\n    kind: \'rejected\';\n    path: string;\n    rejection: AdditionalRootRejection;\n} | {\n    kind: \'sandbox-refused\';\n    path: string;\n    detail: string;\n};',
+  },
+  {
+    name: 'AdditionalRootRejection',
+    declaration: 'export type AdditionalRootRejection = {\n    kind: \'filesystem-root\';\n} | {\n    kind: \'main-root\';\n} | {\n    kind: \'inside-main-root\';\n} | {\n    kind: \'contains-main-root\';\n} | {\n    kind: \'overlaps-additional-root\';\n    root: string;\n} | {\n    kind: \'temp-area\';\n    temp: string;\n} | {\n    kind: \'limit\';\n    limit: number;\n};',
+  },
+  {
+    name: 'AdditionalRootsEdit',
+    declaration: 'export type AdditionalRootsEdit = {\n    kind: \'add\';\n    path: string;\n} | {\n    kind: \'remove\';\n    path: string;\n} | {\n    kind: \'replace\';\n    paths: readonly string[];\n};',
+  },
+  {
+    name: 'AdditionalRootsEditResult',
+    declaration: 'export interface AdditionalRootsEditResult {\n    roots: AdditionalRoot[];\n    changed: boolean;\n    refused: AdditionalRootRefusal[];\n}',
+  },
+  {
     name: 'AdmittedPromptContentPart',
     declaration: 'export type AdmittedPromptContentPart = {\n    readonly type: \'text\';\n    readonly text: string;\n} | {\n    readonly type: \'image\';\n    readonly attachment: ImageAttachmentRef;\n} | {\n    readonly type: \'file\';\n    readonly attachment: FileAttachmentRef;\n};',
   },
@@ -7995,7 +8039,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SandboxExecutionPolicy',
-    declaration: 'export interface SandboxExecutionPolicy {\n    mode: SandboxMode;\n    workspaceRoot: string;\n    additionalWritableRoots?: readonly string[];\n    sessionId?: SessionId;\n}',
+    declaration: 'export interface SandboxExecutionPolicy {\n    mode: SandboxMode;\n    workspaceRoot: string;\n    additionalWritableRoots?: readonly string[];\n    additionalRoots: readonly string[];\n    sessionId?: SessionId;\n}',
   },
   {
     name: 'SandboxMode',
@@ -8267,11 +8311,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionCreateRequest',
-    declaration: 'export interface SessionCreateRequest {\n    readonly workspaceId?: WorkspaceId;\n    readonly cwd?: string;\n    readonly sessionId?: SessionId;\n    readonly agentPreset?: string;\n}',
+    declaration: 'export interface SessionCreateRequest {\n    readonly workspaceId?: WorkspaceId;\n    readonly cwd?: string;\n    readonly sessionId?: SessionId;\n    readonly agentPreset?: string;\n    readonly additionalRoots?: readonly string[];\n}',
   },
   {
     name: 'SessionCreateValue',
-    declaration: 'export interface SessionCreateValue {\n    readonly sessionId: SessionId;\n    readonly agentPreset?: string;\n}',
+    declaration: 'export interface SessionCreateValue {\n    readonly sessionId: SessionId;\n    readonly agentPreset?: string;\n    readonly rejectedAdditionalRoots?: readonly string[];\n}',
   },
   {
     name: 'SessionEndInput',

@@ -43,7 +43,7 @@ it('retains workspace write access while refusing a sibling path', async () => {
 it('refuses reuse under another policy until the owner has been released', async () => {
   const { cwd, runtime, owner, run } = await setup()
   expect((await run('var retained = 42;')).error).toBeUndefined()
-  const spec = runtime.resolve({ program: 'typeof retained', bindings: [], stateOwner: owner, sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd } })
+  const spec = runtime.resolve({ program: 'typeof retained', bindings: [], stateOwner: owner, sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd, additionalRoots: [] } })
   await expect(runtime.run(spec)).rejects.toThrow('release the retained environment')
   await runtime.release(owner)
   expect((await runtime.run(spec)).value).toBe('undefined')
@@ -59,15 +59,15 @@ it.skipIf(process.platform === 'win32')('requires release before changing a reta
     program: 'typeof retained',
     bindings: [],
     stateOwner: owner,
-    sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd, additionalWritableRoots: [extra] },
+    sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd, additionalRoots: [], additionalWritableRoots: [extra] },
   })
   await expect(runtime.run(spec)).rejects.toThrow('release the retained environment')
   expect((await run('retained')).value).toBe(7)
   await runtime.release(owner)
   expect((await runtime.run(spec)).value).toBe('undefined')
-  const sameRoots = runtime.resolve({ ...spec, program: 'var second = 8; second', sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd, additionalWritableRoots: [extra, extra] } })
+  const sameRoots = runtime.resolve({ ...spec, program: 'var second = 8; second', sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd, additionalRoots: [], additionalWritableRoots: [extra, extra] } })
   expect((await runtime.run(sameRoots)).value).toBe(8)
-  const changed = runtime.resolve({ ...spec, sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd, additionalWritableRoots: [cwd] } })
+  const changed = runtime.resolve({ ...spec, sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd, additionalRoots: [], additionalWritableRoots: [cwd] } })
   await expect(runtime.run(changed)).rejects.toThrow('release the retained environment')
 })
 

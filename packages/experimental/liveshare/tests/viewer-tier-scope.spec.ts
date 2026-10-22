@@ -96,7 +96,7 @@ async function install(
     scope: shared,
     grantedRoot,
     cwd: root,
-    resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: shared.session.id }),
+    resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: shared.session.id, additionalRoots: [] }),
     fs: ctx.fs,
     tools: ctx.tools,
     describe: describeTool,

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { assertPrivateTempDisjoint, assertTempRootOutsideWorkspace } from '../src/path-boundary.ts'
+import { assertDisjointDirectories, assertPrivateTempDisjoint, assertTempRootOutsideWorkspace } from '../src/path-boundary.ts'
 
 describe('Windows ACL temp path boundary', () => {
   const scratchDirs: string[] = []
@@ -31,6 +31,26 @@ describe('Windows ACL temp path boundary', () => {
     expect(() => {
       assertTempRootOutsideWorkspace(workspace, nested)
     }).toThrow(/temp root must be outside the workspace/u)
+  })
+
+  it('requires workspace roots to be pairwise disjoint', () => {
+    const root = scratch()
+    const first = join(root, 'first')
+    const nested = join(first, 'nested')
+    const second = join(root, 'second')
+    mkdirSync(first)
+    mkdirSync(nested)
+    mkdirSync(second)
+
+    expect(() => {
+      assertDisjointDirectories([first, second])
+    }).not.toThrow()
+    expect(() => {
+      assertDisjointDirectories([second, first, nested])
+    }).toThrow(/workspace roots must be disjoint/u)
+    expect(() => {
+      assertDisjointDirectories([nested, second, first])
+    }).toThrow(/workspace roots must be disjoint/u)
   })
 
   it('accepts a temp parent above the workspace because a fresh child is a sibling', () => {

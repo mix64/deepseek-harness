@@ -47,7 +47,7 @@ kind: "package-reference"
 | `maxPending` | `128` | 普通未完成请求的数量上限；心跳与有界清理请求使用预留容量 |
 | `leaseMs` | `30000` | 辅助进程心跳租期，范围为 3000 至 600000 毫秒 |
 
-将验证后的 `ctx.ssh.ptcLaunch` 作为 [`NodePtcRuntime`](../../ptc-runtime/ptc-runtime-node/README.zh.md) 的 `launch` 配置。可执行文件部署包含 worker；脚本部署使用 PTC 时需要两个引导字段，仅使用文件系统和 Bash 时可以省略。脚本引导未配置时，getter 会拒绝访问。客户端在就绪前拒绝不匹配的协议版本、运行形式和 helper 摘要。
+将验证后的 `ctx.ssh.ptcLaunch` 作为 [`NodePtcRuntime`](../../ptc-runtime/ptc-runtime-node/README.zh.md) 的 `launch` 配置。可执行文件部署包含 worker；脚本部署使用 PTC 时需要两个引导字段，仅使用文件系统和 Bash 时可以省略。脚本引导未配置时，getter 会拒绝访问。客户端在就绪前拒绝不匹配的协议版本、运行形式和 helper 摘要。协议版本 4 在沙箱策略的主根目录旁携带其有序的 `additionalRoots`，因此已安装的 helper 必须与客户端一同升级；helper 在远端文件系统中解析主根目录，远端沙箱后端则在文件实际所在的位置规范化并过滤附加根目录。
 
 -----
 

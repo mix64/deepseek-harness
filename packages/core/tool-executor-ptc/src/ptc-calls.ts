@@ -1,10 +1,12 @@
 /** Cancellation and settlement of complete PTC calls, including nested tools. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
+import { sameSandboxPolicy } from '@deepseek-ai/dsh-sandbox'
+import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 
 interface Call {
-  mode: SandboxMode
+  policy: SandboxExecutionPolicy
   controller: AbortController
   done: Promise<void>
 }
@@ -20,9 +22,12 @@ export class PtcCalls {
    */
   constructor(ctx: Context) {
     ctx.on('session/event', (session, event) => {
-      if (event.type !== 'sandbox/mode') return
+      const policies = ctx.get('sandboxPolicy')
+      if (policies === undefined) return
       for (const call of this.calls.get(session.id) ?? []) {
-        if (call.mode !== event.data.mode) call.controller.abort(new Error('sandbox mode changed'))
+        const next = policies.successor(call.policy, event)
+        if (next === undefined || sameSandboxPolicy(call.policy, next)) continue
+        call.controller.abort(new Error(next.mode === call.policy.mode ? 'sandbox additional directories changed' : 'sandbox mode changed'))
       }
     }, { global: true })
     ctx.effect(() => async () => {
@@ -37,11 +42,16 @@ export class PtcCalls {
    * Await canceled predecessors before resolving authority and admitting a call.
    * @param sessionId - Calling Session.
    * @param signal - Caller cancellation.
-   * @param mode - Current standing mode, read after preceding cleanup.
+   * @param policy - Current standing policy, read after preceding cleanup.
    * @param run - Complete call, including nested-tool cleanup.
    * @returns The call result.
    */
-  async run<T>(sessionId: SessionId, signal: AbortSignal, mode: () => SandboxMode, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  async run<T>(
+    sessionId: SessionId,
+    signal: AbortSignal,
+    policy: () => SandboxExecutionPolicy,
+    run: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
     for (;;) {
       const pending = [...this.calls.get(sessionId) ?? []].filter(call => call.controller.signal.aborted)
       if (pending.length === 0) break
@@ -51,7 +61,7 @@ export class PtcCalls {
     if (this.disposed) throw new Error('PTC tool executor disposed')
     const controller = new AbortController()
     const done = Promise.withResolvers<undefined>()
-    const call = { mode: mode(), controller, done: done.promise }
+    const call = { policy: policy(), controller, done: done.promise }
     let calls = this.calls.get(sessionId)
     if (calls === undefined) this.calls.set(sessionId, calls = new Set())
     calls.add(call)

@@ -13,7 +13,7 @@ import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protoc
 import type { SessionEventSource } from '../contract/events.ts'
 import type { SessionFace } from '../contract/session.ts'
 import type {
-  AgentContext, ISessions, SessionReference, SessionRetainInfo, SessionRetainOptions, SessionTarget,
+  AgentContext, ISessions, SessionCreated, SessionReference, SessionRetainInfo, SessionRetainOptions, SessionTarget,
 } from '../contract/sessions.ts'
 import type { SessionReferenceSource } from '../index.ts'
 import { createScope, scopeIdentityOf, scopeOf as scopeTagOf } from '../scope.ts'
@@ -431,8 +431,8 @@ export class ClientSessions implements ISessions {
   /**
    * Create a Host Session and publish its catalog row before resolving.
    * Callers retain the returned identity before borrowing its binding.
-   * @param opts - target workspace or directory, an optional blank Session to reuse, and an optional Agent preset.
-   * @returns the created or reused session id.
+   * @param opts - target workspace or directory, an optional blank Session to reuse, an optional Agent preset, and additional roots.
+   * @returns the created or reused session id and the additional roots the Host refused.
    * @throws {SessionCreateError} with the requested id.
    */
   async create(opts: {
@@ -440,11 +440,12 @@ export class ClientSessions implements ISessions {
     cwd?: string
     sessionId?: SessionId
     agentPreset?: string
-  } = {}): Promise<SessionId> {
+    additionalRoots?: readonly string[]
+  } = {}): Promise<SessionCreated> {
     const result = await this.manager.create(opts)
     if (!result.ok) throw new SessionCreateError(result.error, opts.sessionId)
     this.projectList()
-    return result.value.sessionId
+    return { sessionId: result.value.sessionId, rejectedAdditionalRoots: result.value.rejectedAdditionalRoots ?? [] }
   }
 
   /**

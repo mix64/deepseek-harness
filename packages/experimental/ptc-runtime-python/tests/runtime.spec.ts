@@ -81,14 +81,14 @@ describe('PythonPtcRuntime — seam descriptors and misuse', () => {
     try {
       const request = { program: 'return 1', bindings: [] }
       expect(runtime.sandboxMode).toBe('danger-full-access')
-      expect(runtime.resolve(request)).toEqual({ ...request, cwd: process.cwd(), timeoutMs: 30_000, sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: process.cwd() } })
+      expect(runtime.resolve(request)).toEqual({ ...request, cwd: process.cwd(), timeoutMs: 30_000, sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: process.cwd(), additionalRoots: [] } })
       const cwd = await makeTempDir('dsh-py-resolved-cwd-')
       const spec = runtime.resolve({ ...request, cwd })
       expect(spec.cwd).toBe(cwd)
       expect(() => runtime.resolve({ ...request, cwd: 'relative' })).toThrow('cwd must be absolute')
       expect(() => runtime.resolve({ ...request, timeoutMs: 1 })).toThrow('per-call timeout is unsupported')
       expect(() => runtime.resolve({ ...request, timeoutMs: null })).toThrow('per-call timeout is unsupported')
-      const sandboxPolicy = { mode: 'danger-full-access' as const, workspaceRoot: cwd }
+      const sandboxPolicy = { mode: 'danger-full-access' as const, workspaceRoot: cwd, additionalRoots: [] }
       expect(runtime.resolve({ ...request, sandboxPolicy }).sandboxPolicy).toBe(sandboxPolicy)
       await expect(runtime.run({ ...request, cwd, timeoutMs: 30_000 })).rejects.toThrow('run requires a resolved sandbox policy')
       await expect(runtime.run({ ...spec, cwd: 'relative' })).rejects.toThrow('cwd must be absolute')

@@ -98,7 +98,7 @@ function installLimit(): (() => void) | undefined {
     childScope: child,
     grantedRoot: granted,
     cwd: root,
-    resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: child.session.id }),
+    resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: child.session.id, additionalRoots: [] }),
     fs: ctx.fs,
     tools: ctx.tools,
     forks,
@@ -180,7 +180,7 @@ describe('fork child tool execution', () => {
     await ctx.plugin(FsObservationPolicy)
     const dispose = installForkEnforcement({
       childSessionId, childContext: scope.ctx, childScope: child, grantedRoot: granted, cwd: root,
-      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: child.session.id }),
+      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: child.session.id, additionalRoots: [] }),
       fs: ctx.fs, tools: ctx.tools, forks, describe: describeTool, write: true,
     })
     expect(dispose).toBeDefined()
@@ -195,7 +195,7 @@ describe('fork child tool execution', () => {
     let writable = true
     const dispose = installForkEnforcement({
       childSessionId, childContext: scope.ctx, childScope: child, grantedRoot: granted, cwd: root,
-      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: child.session.id }),
+      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: child.session.id, additionalRoots: [] }),
       fs: ctx.fs, tools: ctx.tools, forks, describe: describeTool, write: true,
       authorized: tool => tool !== 'write' || writable,
     })
@@ -512,7 +512,7 @@ describe('fork child tool execution', () => {
       scope: shared,
       grantedRoot: granted,
       cwd: root,
-      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: shared.session.id }),
+      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: shared.session.id, additionalRoots: [] }),
       fs: ctx.fs,
       tools: ctx.tools,
       describe: describeTool,
@@ -609,7 +609,7 @@ describe('fork child tool execution', () => {
       scope: shared,
       grantedRoot: granted,
       cwd: root,
-      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: shared.session.id }),
+      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: shared.session.id, additionalRoots: [] }),
       fs: ctx.fs,
       tools: ctx.tools,
       describe: describeTool,
@@ -677,7 +677,7 @@ describe('fork child tool execution', () => {
       scope: view,
       grantedRoot: granted,
       cwd: root,
-      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: view.session.id }),
+      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: view.session.id, additionalRoots: [] }),
       fs: ctx.fs,
       tools: ctx.tools,
       describe: describeTool,
@@ -728,7 +728,7 @@ describe('fork child tool execution', () => {
       childScope: writer,
       grantedRoot: granted,
       cwd: root,
-      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: SessionId(writer.id) }),
+      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: SessionId(writer.id), additionalRoots: [] }),
       fs: ctx.fs,
       tools: ctx.tools,
       forks,
@@ -777,7 +777,7 @@ describe('fork child tool execution', () => {
       childScope: writer,
       grantedRoot: granted,
       cwd: root,
-      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: SessionId('child-editor') }),
+      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: SessionId('child-editor'), additionalRoots: [] }),
       fs: ctx.fs,
       tools: ctx.tools,
       forks,
@@ -848,7 +848,7 @@ describe('fork child tool execution', () => {
       childScope: layeredChild,
       grantedRoot: granted,
       cwd: root,
-      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: SessionId(layeredChild.id) }),
+      resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: SessionId(layeredChild.id), additionalRoots: [] }),
       fs: ctx.fs,
       tools: ctx.tools,
       forks,

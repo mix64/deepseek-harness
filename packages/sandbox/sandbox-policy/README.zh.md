@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包可以让每次受限的 bash、文件系统和终端调用遵循同一份文件操作策略。部署方选择默认模式和回退工作区根目录，每个会话则可以独立切换模式。会话选择可跨重启保留，所有强制执行能力在一次调用中使用相同的模式和工作区。每次模型请求前，模型都会收到有效策略和工作区说明，但不会收到已挂载能力的清单。
+使用本包可以让每次受限的 bash、文件系统和终端调用遵循同一份文件操作策略。部署方选择默认模式和回退工作区根目录，每个会话则可以独立切换模式并添加可写目录。会话选择可跨重启保留，所有强制执行能力在一次调用中使用相同的模式和目录。每次模型请求前，模型都会收到有效策略及其目录说明，但不会收到已挂载能力的清单。
 
 ## 目录
 
@@ -47,6 +47,7 @@ kind: "package-reference"
 | `mode` | `read-only` | 会话起始的部署默认模式，加载时验证 |
 | `workspaceRoot` | `process.cwd()` | 无 agent 调用或没有 cwd 的会话所用的绝对回退根目录；相对值在加载时拒绝。普通 agent 调用使用会话的不可变 cwd |
 | `additionalWritableRoots` | `[]` | 在 `workspace-write` 下额外允许写入的显式物理绝对目录；其他受限模式不授予这些目录的写权限 |
+| `maxAdditionalRoots` | `16` | 一个会话最多可持有的附加目录数 |
 
 对于关联的 Git worktree，调用方可通过 `additionalWritableRoots` 授予共享 Git 目录的写权限。调用方必须显式选择该目录；策略不会读取 Git 文件或授权父检出目录。这些授权是组合中所有会话共享的部署配置，而非保存的 Session 权限。授权整个 Git 目录也允许修改钩子和配置，后续主机 Git 调用可能在沙箱之外执行它们；仅对可信任务使用此授权。使用物理绝对目录路径。执行限制的主机拒绝不存在的路径、文件和符号链接根目录，包括两次调用之间被替换为符号链接的目录。远端授权在远端主机上验证。
 
@@ -54,7 +55,11 @@ kind: "package-reference"
 
 ### 切换会话模式
 
-会话的模式可以在运行时通过 UI 策略控件或显式切换来更改；切换记录在会话日志中，并在该会话的下一次受限调用时生效。切换通过回放跨重启保留，每个会话保持自己的模式——两个会话绝不会看到彼此状态。切换后的会话继续以不可变的工作区 cwd 作为写入边界。
+会话的模式可以在运行时通过 UI 策略控件或显式切换来更改；切换记录在会话日志中，并在该会话的下一次受限调用时生效。切换通过回放跨重启保留，每个会话保持自己的模式——两个会话绝不会看到彼此状态。切换后的会话继续以不可变的工作区 cwd 作为主根目录。
+
+### 附加目录
+
+除主根目录外，会话还持有一个有序的附加可写目录列表。`/add-dir <dir>` 添加一个目录，`/remove-dir <dir>` 移除一个目录，不带参数的 `/add-dir` 列出这些目录。以 `"` 开头的参数必须恰好是一个 JSON 字符串字面量（`/add-dir "E:\\with space"`）；相对路径相对于主根目录解析。只有满足以下条件的目录才会被接纳：它在执行环境中作为目录存在，不是文件系统根目录，既不等于、不包含主根目录，也不位于主根目录之内，不与其他附加目录或临时区域重叠，并且列表未达到 `maxAdditionalRoots`。添加生效前，沙箱提供方会在预期策略下约束一次探测，因此按根目录授权的后端（Windows ACL）会在此时授权，其拒绝会使添加失败。同一会话的编辑逐个执行，重复添加或移除不会产生变化。只有 `workspace-write` 会强制执行该列表；其他模式保留并报告该列表，但不授予任何权限。委派的子会话以父会话的列表启动，fork 继承该列表，`session.create({ additionalRoots })` 以被接纳的子集启动会话，并把其余路径报告为 `rejectedAdditionalRoots`。
 
 ### 失败与恢复
 
@@ -72,15 +77,15 @@ kind: "package-reference"
 
 ### 解析优先级
 
-`resolve({ session, mode })` 返回一份完整的逐调用策略：已批准的显式模式优先于会话最后一条 `sandbox/mode` 事件，后者又优先于部署默认值。会话的不可变 `cwd` 提供工作区根目录；否则使用配置的回退值。执行环境中的绝对路径写法保持不变。执行限制的提供方在自己的文件系统上规范化根目录，因此远端 `symlink/..` 路径绝不会在 Harness 主机上解析。
+`resolve({ session, mode })` 返回一份完整的逐调用策略：已批准的显式模式优先于会话最后一条 `sandbox/mode` 事件，后者又优先于部署默认值。会话的不可变 `cwd` 提供工作区根目录；否则使用配置的回退值。会话最后一条 `sandbox/additional-roots` 事件提供 `additionalRoots`，无 agent 调用则没有附加目录。执行环境中的绝对路径写法保持不变。执行限制的提供方在自己的文件系统上规范化根目录，因此远端 `symlink/..` 路径绝不会在 Harness 主机上解析。
 
 ### 逐会话存储
 
-运行时切换是在对应会话日志中追加的一条仅写入日志的 `sandbox/mode` 事件——切换本身就是事件，任何机制都不会在带外修改模式状态。`effective = explicit grant ?? fold(events) ?? deployment default`，因此覆盖通过回放跨重启保留，两个会话也绝不会看到彼此状态。工作区标识无需事件：创建时记录的不可变 `SessionHeader.cwd` 是该会话每次调用使用的根。事件仍只进入日志；在每次请求前，归属方会把当前事实贡献给完整运行时上下文快照，agent loop（智能体循环）将该快照记录为一条带来源的 `user/message`。
+运行时切换是在对应会话日志中追加的一条仅写入日志的 `sandbox/mode` 事件——切换本身就是事件，任何机制都不会在带外修改模式状态。`effective = explicit grant ?? fold(events) ?? deployment default`，因此覆盖通过回放跨重启保留，两个会话也绝不会看到彼此状态。工作区标识无需事件：创建时记录的不可变 `SessionHeader.cwd` 是该会话每次调用使用的主根目录。每次附加目录编辑都会追加一条仅写入日志的 `sandbox/additional-roots` 事件，携带完整列表；最后一条生效，`source: 'delegation'` 标记写入子会话的列表。`successor(before, event)` 为持有受限进程或运行时的一方给出已提交事件所导向的策略。这些事件仍只进入日志；在每次请求前，归属方会把当前事实贡献给完整运行时上下文快照，agent loop（智能体循环）将该快照记录为一条带来源的 `user/message`。
 
 ### 模型可见文本
 
-`sandbox:policy` 贡献说明该模式与具体能力无关的文件操作约定，以及 `workspace-write` 下已记录的会话工作区和显式额外目录。它不枚举已挂载能力；工具插件保留特定于操作的拒绝与升权引导，批准策略单独贡献给同一份快照，计划引导仍由 `dsh-plan-mode` 的系统段落管理。
+`sandbox:policy` 贡献说明该模式与具体能力无关的文件操作约定、`workspace-write` 下已记录的会话工作区和显式额外目录，以及会话拥有附加目录时在任一模式下的这些目录。它不枚举已挂载能力；工具插件保留特定于操作的拒绝与升权引导，批准策略单独贡献给同一份快照，计划引导仍由 `dsh-plan-mode` 的系统段落管理。
 
 ### 源码地图
 
@@ -88,6 +93,7 @@ kind: "package-reference"
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`SandboxPolicyService`、`Config` schema、策略解析与上下文贡献 |
 | [`src/session-mode.ts`](src/session-mode.ts) | `sandbox/mode` 事件、其 fold 与写入路径 |
+| [`src/session-roots.ts`](src/session-roots.ts) | `sandbox/additional-roots` 事件，以及纯函数形式的接纳与移除规划 |
 
 </details>
 
@@ -101,6 +107,7 @@ kind: "package-reference"
 - [进程沙箱子系统](../../../docs/subsystems/sandbox.zh.md)——模式、逐调用策略与强制执行语义。
 - [沙箱 seam 包](../sandbox/README.zh.md)——每个强制执行能力实现的隔离约定。
 - [历史跨家族文件沙箱决策](../../../.agents/notes/archived/feature/2026-07-14-cross-family-fs-sandbox.md)——为何存在统一的共享策略归属位置。
+- [权限预设界面](../../client/ui-permission-presets/README.zh.md)——编辑会话附加目录的 Web composer 控件。
 
 -----
 
@@ -131,6 +138,18 @@ Current DSH file policy: workspace-write. Any available operation enforced by th
 Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: "<workspace root>". Additional writable directories: ["/repo/.git"]. Some platform temporary areas may also be writable.
 ```
 
+##### 带附加目录的工作区写入
+
+```markdown
+Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: "<workspace root>", and under the additional session directories: "<dir>", "<dir>". Use absolute paths for files in the additional directories. Some platform temporary areas may also be writable.
+```
+
+##### 带附加目录的其他模式
+
+```markdown
+<read-only or danger-full-access text> Additional session directories: "<dir>", "<dir>".
+```
+
 ##### 完全访问
 
 ```markdown
@@ -139,7 +158,7 @@ Current DSH file policy: danger-full-access. The DSH file sandbox does not restr
 
 #### Token 影响
 
-首次请求和有效策略每次变化时增加一条简洁的持久上下文消息；未变化的请求不增加内容。`workspace-write` 携带已记录的会话工作区路径以及显式指定的额外目录；平台特定的临时路径会以摘要表述，不会加入依赖主机的字节。
+首次请求和有效策略每次变化时增加一条简洁的持久上下文消息；未变化的请求不增加内容。`workspace-write` 携带已记录的会话工作区路径、显式指定的额外目录以及会话的附加目录；平台特定的临时路径会以摘要表述，不会加入依赖主机的字节。
 
 #### KV Cache 影响
 
@@ -152,7 +171,8 @@ Current DSH file policy: danger-full-access. The DSH file sandbox does not restr
 
 这些限制界定了本包提供的策略范围。它们是当前的包级约束，并非通用沙箱对比，也不是待办事项清单。
 
-- **部署级额外授权**——额外目录来自配置，而非逐会话权限设置。后端支持情况见 [sandbox-local](../sandbox-local/README.zh.md)。
+- **部署级额外授权**——`additionalWritableRoots` 来自配置并适用于所有会话；逐会话的目录是下面单独的附加根目录。后端支持情况见 [sandbox-local](../sandbox-local/README.zh.md)。
+- **附加目录在添加时检查，并在每次调用时过滤**——已列出的目录之后消失或变得与其他根目录重叠时，在恢复有效之前不授予任何权限，而策略上下文在其被移除前仍会列出它。
 - **仅限文件操作模式**——`SandboxMode` 管控文件操作；网络和进程策略不在其词汇中，因此这里没有限制它们的旋钮。
 - **有意概述临时区域**——强制执行后端会授予不同的平台临时区域，这些区域在策略解析后才会选定，因此无法在当前上下文中如实枚举。
 

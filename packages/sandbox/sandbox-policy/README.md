@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to apply one file-effect policy to every confined bash, filesystem, and terminal call. Deployments choose a default mode and fallback workspace root, while each session can switch modes independently. Session choices survive restart, and all enforcing capabilities use the same mode and workspace for a call. Before each model request, the model receives the effective policy and workspace without an inventory of mounted capabilities.
+Use this package to apply one file-effect policy to every confined bash, filesystem, and terminal call. Deployments choose a default mode and fallback workspace root, while each session can switch modes and add writable directories independently. Session choices survive restart, and all enforcing capabilities use the same mode and directories for a call. Before each model request, the model receives the effective policy and its directories without an inventory of mounted capabilities.
 
 ## Table of Contents
 
@@ -47,6 +47,7 @@ Load the package with a default mode; the fail-safe default is `read-only`, and 
 | `mode` | `read-only` | The deployment default mode a session starts from, validated at load |
 | `workspaceRoot` | `process.cwd()` | Absolute fallback root for agentless calls or sessions without a cwd; relative values fail at load. Normal agent calls use the session's immutable cwd |
 | `additionalWritableRoots` | `[]` | Explicit physical absolute directories also writable under `workspace-write`; other confined modes grant no access to them |
+| `maxAdditionalRoots` | `16` | Maximum number of additional directories one session may hold |
 
 For a linked Git worktree, the caller can grant its shared Git directory with `additionalWritableRoots`. The caller selects that directory explicitly; the policy does not inspect Git files or grant a parent checkout. These grants are deployment configuration shared by the composition's sessions, rather than saved Session permissions. Granting the entire Git directory also permits changes to hooks and configuration that a later host Git invocation can execute outside the sandbox; use that grant only for trusted tasks. Use physical absolute directory paths. The enforcing host rejects missing paths, files, and symlinked roots, including a directory replaced by a symlink between calls. Remote grants are validated on the remote host.
 
@@ -54,7 +55,11 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Switching a session's mode
 
-A session's mode can be switched at runtime through a UI policy control or an explicit switch; the switch is recorded in the session log and takes effect on the session's next confined call. The switch survives restart through replay, and each session keeps its own mode — two sessions never see each other's state. A switched session keeps its immutable workspace cwd as the writable boundary.
+A session's mode can be switched at runtime through a UI policy control or an explicit switch; the switch is recorded in the session log and takes effect on the session's next confined call. The switch survives restart through replay, and each session keeps its own mode — two sessions never see each other's state. A switched session keeps its immutable workspace cwd as its main root.
+
+### Additional directories
+
+Besides its main root, a session holds an ordered list of additional writable directories. `/add-dir <dir>` adds one, `/remove-dir <dir>` removes one, and a bare `/add-dir` lists them. An argument that starts with `"` must be exactly one JSON string literal (`/add-dir "E:\\with space"`); a relative path resolves against the main root. A directory is admitted only when it exists as a directory in the execution world, is not a filesystem root, neither equals, contains, nor lies inside the main root, overlaps no other additional directory or temp area, and the list is below `maxAdditionalRoots`. Before an add commits, the sandbox provider confines a probe under the prospective policy, so a backend that grants per root (Windows ACL) grants now and its refusal fails the add. Edits of one session run one at a time, and repeating an add or a remove changes nothing. Only `workspace-write` enforces the list; other modes keep and report it without granting anything. Delegated children start with their parent's list, forks inherit it, and `session.create({ additionalRoots })` starts a session with the admitted subset and reports the rest as `rejectedAdditionalRoots`.
 
 ### Failures and recovery
 
@@ -72,15 +77,15 @@ This section explains policy resolution, the per-session store, and the model-vi
 
 ### Resolution precedence
 
-`resolve({ session, mode })` returns one complete per-call policy: an approved explicit mode outranks the session's last `sandbox/mode` event, which outranks the deployment default. The session's immutable `cwd` supplies the workspace root; otherwise the configured fallback applies. Absolute execution-world spelling is preserved. Enforcing providers canonicalize the root on their own filesystem, so remote `symlink/..` paths are never resolved on the Harness host.
+`resolve({ session, mode })` returns one complete per-call policy: an approved explicit mode outranks the session's last `sandbox/mode` event, which outranks the deployment default. The session's immutable `cwd` supplies the workspace root; otherwise the configured fallback applies. The session's last `sandbox/additional-roots` event supplies `additionalRoots`, and agentless calls have none. Absolute execution-world spelling is preserved. Enforcing providers canonicalize the root on their own filesystem, so remote `symlink/..` paths are never resolved on the Harness host.
 
 ### The per-session store
 
-A runtime switch is one log-only `sandbox/mode` event on the session it applies to — the switch IS its event, and nothing mutates mode state out of band. `effective = explicit grant ?? fold(events) ?? deployment default`, so an override survives restart by replay and two sessions never see each other's state. Workspace identity needs no event: the immutable `SessionHeader.cwd` recorded at creation is the root for every call in that session. The event stays log-only; before each request, the owner contributes the current fact to the full runtime-context snapshot, and the agent loop logs that snapshot as a sourced `user/message`.
+A runtime switch is one log-only `sandbox/mode` event on the session it applies to — the switch IS its event, and nothing mutates mode state out of band. `effective = explicit grant ?? fold(events) ?? deployment default`, so an override survives restart by replay and two sessions never see each other's state. Workspace identity needs no event: the immutable `SessionHeader.cwd` recorded at creation is the main root for every call in that session. Each additional-root edit appends one log-only `sandbox/additional-roots` event carrying the complete list; the last one wins, and `source: 'delegation'` marks a list seeded into a child. `successor(before, event)` gives holders of a confined process or runtime the policy a committed event leads to. The events stay log-only; before each request, the owner contributes the current fact to the full runtime-context snapshot, and the agent loop logs that snapshot as a sourced `user/message`.
 
 ### Model-visible text
 
-The `sandbox:policy` contribution states the mode's capability-neutral file-effect contract and the recorded session workspace and explicit extra directories under `workspace-write`. It does not enumerate mounted capabilities; tool plugins retain operation-specific denial and escalation guidance, approval policy contributes separately to the same snapshot, and plan guidance remains `dsh-plan-mode`'s system section.
+The `sandbox:policy` contribution states the mode's capability-neutral file-effect contract, the recorded session workspace and explicit extra directories under `workspace-write`, and the session's additional directories in every mode when it has any. It does not enumerate mounted capabilities; tool plugins retain operation-specific denial and escalation guidance, approval policy contributes separately to the same snapshot, and plan guidance remains `dsh-plan-mode`'s system section.
 
 ### Source map
 
@@ -88,6 +93,7 @@ The `sandbox:policy` contribution states the mode's capability-neutral file-effe
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: `SandboxPolicyService`, `Config` schema, policy resolution and context contribution |
 | [`src/session-mode.ts`](src/session-mode.ts) | The `sandbox/mode` event, its fold, and the write path |
+| [`src/session-roots.ts`](src/session-roots.ts) | The `sandbox/additional-roots` event and the pure admission and removal planning |
 
 </details>
 
@@ -101,6 +107,7 @@ Start with the subsystem reference for the shared vocabulary, then the seam cont
 - [Process sandbox subsystem](../../../docs/subsystems/sandbox.md) — modes, per-call policy, and enforcement semantics.
 - [Sandbox seam package](../sandbox/README.md) — the confinement contract every enforcing capability implements.
 - [historical Cross-family file sandbox decision](../../../.agents/notes/archived/feature/2026-07-14-cross-family-fs-sandbox.md) — why one shared policy home exists.
+- [Permission preset surfaces](../../client/ui-permission-presets/README.md) — the Web composer control that edits a session's additional directories.
 
 -----
 
@@ -131,6 +138,18 @@ Current DSH file policy: workspace-write. Any available operation enforced by th
 Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: "<workspace root>". Additional writable directories: ["/repo/.git"]. Some platform temporary areas may also be writable.
 ```
 
+##### Workspace-write with additional directories
+
+```markdown
+Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: "<workspace root>", and under the additional session directories: "<dir>", "<dir>". Use absolute paths for files in the additional directories. Some platform temporary areas may also be writable.
+```
+
+##### Other modes with additional directories
+
+```markdown
+<read-only or danger-full-access text> Additional session directories: "<dir>", "<dir>".
+```
+
 ##### Danger-full-access
 
 ```markdown
@@ -139,7 +158,7 @@ Current DSH file policy: danger-full-access. The DSH file sandbox does not restr
 
 #### Token effect
 
-One concise durable context message on the first request and each effective policy change; unchanged requests add nothing. `workspace-write` carries the recorded session workspace path and any explicit additional directories; platform-specific temporary paths are summarized without adding host-dependent bytes.
+One concise durable context message on the first request and each effective policy change; unchanged requests add nothing. `workspace-write` carries the recorded session workspace path, any explicit extra directories, and the session's additional directories; platform-specific temporary paths are summarized without adding host-dependent bytes.
 
 #### KV Cache effect
 
@@ -152,7 +171,8 @@ The stable system prompt remains byte-identical across mode changes. A changed f
 
 These limits define the policy surface this package provides. They are current package constraints, not a general sandbox comparison or a task backlog.
 
-- **Deployment-scoped extra grants** — additional directories come from configuration; they are not per-session permission settings. Backend support is defined by [sandbox-local](../sandbox-local/README.md).
+- **Deployment-scoped extra grants** — `additionalWritableRoots` come from configuration and apply to every session; per-session directories are the separate additional roots below. Backend support is defined by [sandbox-local](../sandbox-local/README.md).
+- **Additional directories are checked when added and filtered at each call** — a listed directory that later disappears or comes to overlap another root grants nothing until it is valid again, while the policy context still names it until it is removed.
 - **File-effect modes only** — `SandboxMode` governs file effects; network and process policy are outside its vocabulary, so no knob here restricts them.
 - **Temporary areas are deliberately summarized** — enforcing backends grant different platform temporary areas, which are selected after policy resolution and therefore cannot be enumerated truthfully in the current context.
 

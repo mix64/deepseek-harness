@@ -24,8 +24,8 @@
   en: 16596607bbccc2a3
   zh: 30bc370a5281bf0d
 /deepseek-ai-dsh-sandbox-windows-acl/use-this-package/what-confinement-gives-you:
-  en: 289e65bddf20dd79
-  zh: 7ff72ed64c4b4d1c
+  en: d03fec464e4394eb
+  zh: 5f1fc66a492d3c5e
 /deepseek-ai-dsh-sandbox-windows-acl/use-this-package/failures-and-recovery:
   en: 7fc0707debb1e67c
   zh: e3b5529bf82f868e
@@ -33,14 +33,14 @@
   en: c2cde86c85c2c619
   zh: a29a114e591f9d3f
 /deepseek-ai-dsh-sandbox-windows-acl/understand-the-implementation/mechanism:
-  en: a37ea37f2d527693
-  zh: 749b5a263d0e1534
+  en: ea31e6349f2e9418
+  zh: 56e11df1f9caa3be
 /deepseek-ai-dsh-sandbox-windows-acl/understand-the-implementation/modes-and-token-lists:
-  en: 9c8d9af84f9abd99
-  zh: 1c82b355aa5f210f
+  en: b31295ae26dba49f
+  zh: 06293f510208ae14
 /deepseek-ai-dsh-sandbox-windows-acl/understand-the-implementation/the-confinement-runner:
-  en: 0847de0e53e50061
-  zh: 90fa3dcaf080c3be
+  en: 967f68b8a3fd3310
+  zh: dd714b1163409548
 /deepseek-ai-dsh-sandbox-windows-acl/understand-the-implementation/verified-boundaries:
   en: ad02570eae90037f
   zh: fd78c2318de18dda
@@ -57,8 +57,8 @@
   en: 817eb1b7de13872e
   zh: 06fe175e41e7459b
 /deepseek-ai-dsh-sandbox-windows-acl/known-limitations-and-deferred-work:
-  en: 046831a864786b2a
-  zh: 4a261fbab3396ea4
+  en: cae6e103bbabf0da
+  zh: 15bacf715a3ce172
 /deepseek-ai-dsh-sandbox-windows-acl/known-limitations-and-deferred-work/dev-note:
   en: cc273320f6a1beaf
   zh: 5c57a312ddc50651

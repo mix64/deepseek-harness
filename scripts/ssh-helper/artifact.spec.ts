@@ -17,7 +17,7 @@ async function fixture() {
   await writeFile(join(payload, 'native/system/package.json'), '{}')
   const metadata = {
     format: 1, version: '1.0.0', commit: 'a'.repeat(40), dirty: false,
-    target: 'node24-linux-x64', protocol: 2, nodeVersion: 'v24.1.0',
+    target: 'node24-linux-x64', protocol: 3, nodeVersion: 'v24.1.0',
     files: await Promise.all((await payloadFiles(payload)).map(async path => ({
       path, sha256: await fileDigest(join(payload, path)), mode: (await lstat(join(payload, path))).mode & 0o777,
     }))),

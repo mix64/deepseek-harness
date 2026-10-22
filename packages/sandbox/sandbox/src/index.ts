@@ -19,7 +19,11 @@ export {
   validateEscalationArgs,
 } from './escalation.ts'
 export type { EscalationApproval, EscalationApprover, EscalationOutcome, EscalationRequest } from './escalation.ts'
-export { canonicalPath, workspaceWritableRoots, writableRoots, SandboxInvalidRootError } from './roots.ts'
+export {
+  canonicalPath, checkAdditionalRoot, sameSandboxPolicy, SandboxInvalidRootError, tempAreas, workspaceRoots,
+  workspaceWritableRoots, writableRoots,
+} from './roots.ts'
+export type { AdditionalRootContext, AdditionalRootRejection } from './roots.ts'
 
 /**
  * File-effect policy for confined processes. `read-only` permits only required
@@ -33,14 +37,14 @@ export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 export type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access'>
 
 /**
- * The complete file-effect policy resolved for one capability call. The root
- * is carried even under modes that do not consume it so callers can resolve
+ * The complete file-effect policy resolved for one capability call. The roots
+ * are carried even under modes that do not consume them so callers can resolve
  * policy once before choosing the enforcement path.
  */
 export interface SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: SandboxMode
-  /** Absolute root directory `workspace-write` may write under. */
+  /** Absolute main root directory `workspace-write` may write under. */
   workspaceRoot: string
   /**
    * Extra physical absolute directories `workspace-write` may also write under.
@@ -49,6 +53,13 @@ export interface SandboxExecutionPolicy {
    * These grant nothing under `read-only` or `danger-full-access`.
    */
   additionalWritableRoots?: readonly string[]
+  /**
+   * Absolute session directories `workspace-write` may also write under, in
+   * admission order. Enforcement derives the effective list through
+   * `workspaceRoots`, which drops entries that are missing or overlap the
+   * main root, an explicit extra directory, an earlier root, or a temp area.
+   */
+  additionalRoots: readonly string[]
   /**
    * Opaque identity of the calling session (the branded `dsh-session`
    * SessionId). Backends key per-session state off it (e.g. windows-acl gives

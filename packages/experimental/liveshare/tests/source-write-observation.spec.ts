@@ -128,7 +128,7 @@ async function install(over: ForkEnforcementFs): Promise<SourceSessionAccessInst
     scope: scopeKey,
     grantedRoot: await ctx.fs.resolve(root),
     cwd: root,
-    resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: shared.session.id }),
+    resolvePolicy: () => ({ mode: 'workspace-write', workspaceRoot: root, sessionId: shared.session.id, additionalRoots: [] }),
     fs: over,
     tools: ctx.tools,
     describe: describeTool,

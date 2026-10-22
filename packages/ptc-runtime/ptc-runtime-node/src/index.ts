@@ -72,7 +72,7 @@ export class NodePtcRuntime extends PtcRuntime {
 
   /**
    * Run a resolved program under the configured execution mode.
-   * Session mode changes cancel admitted calls before process launch as well as active programs.
+   * Session policy changes (mode or additional roots) cancel admitted calls before process launch as well as active programs.
    * @param spec - Inputs returned by resolve for the configured mode.
    * @returns Logs, JSON completion or failure; retained processes remain until release or invalidation.
    */
@@ -80,8 +80,8 @@ export class NodePtcRuntime extends PtcRuntime {
     if (this.disposed) throw new Error('ptc-runtime-node: run after disposal')
     const controller = new AbortController()
     const completion = Promise.withResolvers<void>()
-    const unregister = spec.sandboxPolicy === undefined ? undefined : this.processes.register(spec.sandboxPolicy, async () => {
-      controller.abort(new Error('sandbox mode changed'))
+    const unregister = spec.sandboxPolicy === undefined ? undefined : this.processes.register(spec.sandboxPolicy, async (reason) => {
+      controller.abort(reason)
       await completion.promise
     })
     const live = { controller, finished: completion.promise }

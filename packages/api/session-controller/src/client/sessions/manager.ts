@@ -507,8 +507,9 @@ export class SessionManager {
    * Contract session.create; on success merge into summaries immediately (no
    * wait for the next refresh). A created session is blank by definition
    * (entity birth precedes the first message).
-   * @param opts - target workspace or working directory, an optional blank Session to reuse, and an optional Agent preset.
-   * @returns the create result, naming the Session the Host created or reused.
+   * @param opts - target workspace or working directory, an optional blank Session to reuse, an optional Agent preset,
+   *   and additional roots.
+   * @returns the create result, naming the Session the Host created or reused and the roots it refused.
   */
   async create(
     opts: {
@@ -516,11 +517,13 @@ export class SessionManager {
       cwd?: string
       sessionId?: SessionId
       agentPreset?: string
+      additionalRoots?: readonly string[]
     } = {},
-  ): Promise<RemoteResult<{ sessionId: SessionId }>> {
+  ): Promise<RemoteResult<{ sessionId: SessionId; rejectedAdditionalRoots?: readonly string[] }>> {
     const shared = {
       ...(opts.sessionId === undefined ? {} : { sessionId: opts.sessionId }),
       ...(opts.agentPreset === undefined ? {} : { agentPreset: opts.agentPreset }),
+      ...(opts.additionalRoots === undefined ? {} : { additionalRoots: opts.additionalRoots }),
     }
     const payload = opts.workspaceId !== undefined
       ? { workspaceId: opts.workspaceId, ...shared }
@@ -532,10 +535,10 @@ export class SessionManager {
         ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
       } })
     } else {
-      const publishedSessionId = workspaceAttachSessionId(result.error)
-      // Publication precedes attachment. The error's id is a real Session,
-      // so expose it immediately as Ungrouped while the caller keeps the
-      // prompt buffer and decides whether to retry attachment.
+      const publishedSessionId = publishedSessionIdOf(result.error)
+      // Publication precedes attachment and the additional-root edit. The
+      // error's id is a real Session, so expose it immediately while the
+      // caller decides how to continue.
       if (publishedSessionId !== undefined) {
         this.recordMutation({ kind: 'placeholder', summary: { agentAvailable: true,
           sessionId: publishedSessionId,
@@ -882,4 +885,9 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
 /** Temporary source-plane bridge while the Host contract and client project build independently. */
 function workspaceAttachSessionId(error: RemoteFailure): SessionId | undefined {
   return error.code === 'session/workspace-attach-failed' ? error.details.sessionId : undefined
+}
+
+/** The Session a refused creation still published: an attachment or additional-root failure after creation. */
+function publishedSessionIdOf(error: RemoteFailure): SessionId | undefined {
+  return error.code === 'session/additional-roots-failed' ? error.details.sessionId : workspaceAttachSessionId(error)
 }

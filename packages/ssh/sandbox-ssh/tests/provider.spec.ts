@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { z } from 'zod'
 import { SshSandboxProvider } from '../src/index.ts'
 
-const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: '/remote/link/..' }
+const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: '/remote/link/..', additionalRoots: [] }
 const completeFacts = {
   argv: ['/usr/bin/bwrap', '--', 'true'], enforcement: 'full', denialSignatures: ['EROFS', 'EACCES'],
   runnerFailureRules: [{ allowedExitCodes: [1], fatalSignatures: ['bwrap:'], informationalLines: ['notice'] }],

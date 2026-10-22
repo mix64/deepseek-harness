@@ -11,6 +11,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { TerminalBackendCleanupError } from '@deepseek-ai/dsh-terminal'
 import type { TerminalBackend, TerminalBackendSpawnSpec, TerminalSendOperation } from '@deepseek-ai/dsh-terminal'
 import type { SubprocessTerminalHandle, SubprocessTerminalSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import { sameSandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { ENCODING_PREAMBLE } from '@deepseek-ai/dsh-pwsh-local'
@@ -26,34 +27,42 @@ export const name = 'terminal-bash'
 /** Required services: terminal registry, shared confinement policy, process substrate, and working directory. */
 export const inject = ['terminals', 'sandboxPolicy', 'subprocess', 'workingDirectory']
 
-interface SandboxModeFenceState {
+interface SandboxPolicyFenceState {
   pty: Context['terminals']
   sandboxPolicy: Context['sandboxPolicy']
 }
 
-const sandboxModeFences = new WeakMap<Agent, SandboxModeFenceState>()
+const sandboxPolicyFences = new WeakMap<Agent, SandboxPolicyFenceState>()
 
-function ensureSandboxModeFence(ctx: Context, owner: Agent): void {
-  const existing = sandboxModeFences.get(owner)
+/**
+ * Refuse a session policy change (mode or additional roots) before it
+ * commits while the owner has persistent terminals open or being created:
+ * their processes were confined under the current policy and cannot follow it.
+ */
+function ensureSandboxPolicyFence(ctx: Context, owner: Agent): void {
+  const existing = sandboxPolicyFences.get(owner)
   if (existing !== undefined) {
     existing.pty = ctx.terminals
     existing.sandboxPolicy = ctx.sandboxPolicy
     return
   }
-  const state: SandboxModeFenceState = {
+  const state: SandboxPolicyFenceState = {
     pty: ctx.terminals,
     sandboxPolicy: ctx.sandboxPolicy,
   }
-  sandboxModeFences.set(owner, state)
+  sandboxPolicyFences.set(owner, state)
   owner.ctx.on('internal/dispatch', (_mode, eventName, args) => {
     if (eventName !== 'session/event') return
     const [session, event] = args as [Session, SessionEvent]
-    if (session !== owner.session || event.type !== 'sandbox/mode') return
-    const folded = state.sandboxPolicy.overrideOf(session) ?? null
-    const currentMode = folded ?? state.sandboxPolicy.defaultMode
-    if (event.data.mode === currentMode || !state.pty.hasOwnerActivity(owner)) return
+    if (session !== owner.session) return
+    const current = state.sandboxPolicy.resolve({ session })
+    const next = state.sandboxPolicy.successor(current, event)
+    if (next === undefined || sameSandboxPolicy(current, next) || !state.pty.hasOwnerActivity(owner)) return
+    const change = next.mode === current.mode
+      ? 'the additional directories'
+      : `sandbox mode from "${current.mode}" to "${next.mode}"`
     throw new Error(
-      `cannot change sandbox mode from "${currentMode}" to "${event.data.mode}" while persistent terminal sessions are open or being created; wait for creation to settle and close them first`,
+      `cannot change ${change} while persistent terminal sessions are open or being created; wait for creation to settle and close them first`,
     )
   }, { global: true })
 }
@@ -197,7 +206,7 @@ export class BashTerminalBackend implements TerminalBackend {
 
   async spawn(spec: TerminalBackendSpawnSpec): Promise<LocalPtySession> {
     spec.signal?.throwIfAborted()
-    ensureSandboxModeFence(this.ctx, spec.owner)
+    ensureSandboxPolicyFence(this.ctx, spec.owner)
     const policy = this.ctx.sandboxPolicy.resolve({ session: spec.owner.session })
     const argv = await spawnArgv(this.ctx, this.config, policy, spec.signal)
     spec.signal?.throwIfAborted()

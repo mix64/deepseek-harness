@@ -68,8 +68,10 @@ function createSessionsBench(ctx: Context): SessionsBench {
     return source
   }
   const resolveBinding = vi.fn((id: SessionId) => bindings.get(id))
-  const createSession = vi.fn<ISessions['create']>(async options =>
-    options?.sessionId ?? sessionId(`created-${String(options?.workspaceId ?? 'none')}`))
+  const createSession = vi.fn<ISessions['create']>(async options => ({
+    sessionId: options?.sessionId ?? sessionId(`created-${String(options?.workspaceId ?? 'none')}`),
+    rejectedAdditionalRoots: [],
+  }))
   const retainInfo = vi.fn<ISessions['retainInfo']>(id => retainSource(id))
   const sessions = {
     list,

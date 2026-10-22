@@ -9,6 +9,7 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import SandboxProvider from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import SandboxPolicyService, { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import type { AdditionalRoot } from '@deepseek-ai/dsh-sandbox-policy'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import TerminalSessionService, { TerminalBackendCleanupError, TerminalSessionId } from '@deepseek-ai/dsh-terminal'
 import type { TerminalSendRequest, TerminalWaitReason } from '@deepseek-ai/dsh-terminal'
@@ -295,7 +296,7 @@ describe('BashTerminalBackend startup rollback', () => {
     expect(initialized).toHaveBeenCalledWith(undefined)
     expect((ctx.sandbox as RecordingSandbox).calls).toEqual([{
       argv: ['/bin/bash', '-i'],
-      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: resolve('/workspace') },
+      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: resolve('/workspace'), additionalRoots: [] },
     }])
   })
 
@@ -329,7 +330,7 @@ describe('BashTerminalBackend startup rollback', () => {
     })
     expect((ctx.sandbox as RecordingSandbox).calls).toEqual([{
       argv: ['/bin/bash', '-i'],
-      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: resolve('/session-workspace') },
+      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: resolve('/session-workspace'), additionalRoots: [] },
     }])
   })
 
@@ -702,6 +703,10 @@ describe('terminal-bash plugin shape', () => {
       'cannot change sandbox mode from "danger-full-access" to "read-only" while persistent terminal sessions are open or being created; wait for creation to settle and close them first',
     )
     expect(session.snapshotEvents().filter(event => event.type === 'sandbox/mode')).toHaveLength(1)
+    expect(() => { session.append('sandbox/additional-roots', { roots: [] }) }).not.toThrow()
+    expect(() => { session.append('sandbox/additional-roots', { roots: ['/extra' as AdditionalRoot] }) }).toThrow(
+      'cannot change the additional directories while persistent terminal sessions are open or being created; wait for creation to settle and close them first',
+    )
 
     const replacementFiber = await registerStubLocalBackend(ctx, () => stubLocalSession())
     const second = await ctx.terminals.spawn(owner, { type: 'stub' })
@@ -712,6 +717,7 @@ describe('terminal-bash plugin shape', () => {
     await ctx.terminals.kill(owner, second.sessionId)
     expect(() => { setSandboxMode(session, 'read-only') }).not.toThrow()
     expect(session.snapshotEvents().filter(event => event.type === 'sandbox/mode')).toHaveLength(2)
+    expect(() => { session.append('sandbox/additional-roots', { roots: ['/extra' as AdditionalRoot] }) }).not.toThrow()
   })
 
   it('also fences sandbox-mode changes across unpublished PTY creation', async () => {
