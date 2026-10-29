@@ -27,6 +27,8 @@ kind: "package-reference"
 
 在已加载 web 服务的组合中挂载本提供方；它以 `exa` 搜索提供方身份注册，因此当它是唯一可用的搜索后端时，`ctx.web.search()` 会自动解析到它——也可以用 `searchProvider: exa` 固定。
 
+[base bundle](../../bundle/base/README.zh.md) 会挂载本提供方，其 `web` 行指定的是 DeepSeek 搜索。基于 base 的 profile 要改用 Exa，需设置 `EXA_API_KEY`，并以 `searchProvider: exa` 重述其 `web` 行。
+
 ### 何时选择
 
 当部署持有 Exa API 密钥，并希望使用 Exa 的关键词或神经搜索、获得每项结果的高亮 snippet 与发布日期时，选择此后端。密钥为空或端点基址无法解析时，提供方不可用——每次搜索调用都会以结构化错误失败。

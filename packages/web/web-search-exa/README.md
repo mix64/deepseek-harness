@@ -27,6 +27,8 @@ With `dsh-web-search-exa`, the harness searches the web through Exa and gets ven
 
 Mount the provider in a composition that already loads the web service; it registers as the `exa` search provider, so `ctx.web.search()` resolves it automatically when it is the only usable search backend — or pin it with `searchProvider: exa`.
 
+The [base bundle](../../bundle/base/README.md) mounts it, and its `web` row names DeepSeek search. A base-backed profile switches to Exa by setting `EXA_API_KEY` and restating its `web` row with `searchProvider: exa`.
+
 ### When to choose it
 
 Choose this backend when a deployment holds an Exa API key and wants Exa's keyword or neural search with per-result highlight snippets and publication dates. The provider is unavailable — and every search call fails with a structured error — when the key is empty or the endpoint base does not parse.
